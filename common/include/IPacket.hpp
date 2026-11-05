@@ -30,15 +30,6 @@ public:
 	std::shared_ptr<const Session::Buffer> serialize() const;
 };
 
-// 방향 표시용. Server는 ClientToServerPacket, Client는 ServerToClientPacket만 받음
-class ClientToServerPacket : public IPacket
-{
-};
-
-class ServerToClientPacket : public IPacket
-{
-};
-
 namespace detail
 {
 	// 본문을 읽어 핸들러를 호출. 본문이 잘못되면 false
@@ -47,6 +38,7 @@ namespace detail
 	template <typename T, typename Handler>
 	PacketDispatcher makePacketDispatcher(Handler handler)
 	{
+		static_assert(std::is_base_of_v<IPacket, T>, "T must derive from IPacket");
 		static_assert(std::is_invocable_v<Handler&, const std::shared_ptr<Session>&, const T&>,
 			"Handler must be callable as handler(const std::shared_ptr<Session>&, const T&)");
 

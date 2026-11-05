@@ -7,7 +7,6 @@
 
 #include <cstdint>
 #include <memory>
-#include <type_traits>
 
 namespace tcpengine
 {
@@ -31,7 +30,6 @@ protected:
 	template <typename T, typename Handler>
 	bool registerHandler(Handler handler)
 	{
-		static_assert(std::is_base_of_v<ClientToServerPacket, T>, "Server can only handle ClientToServerPacket types");
 		return addPacketDispatcher(T().getPacketId(), detail::makePacketDispatcher<T>(std::move(handler)));
 	}
 

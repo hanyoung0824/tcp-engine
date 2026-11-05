@@ -2,7 +2,6 @@
 
 namespace
 {
-	// 등록된 로그 함수. 함수 안의 static으로 두어, 처음 쓸 때 만들어지도록 한다 (전역 변수 초기화 순서 문제를 피한다).
 	LogHandler& logHandler()
 	{
 		static LogHandler instance;

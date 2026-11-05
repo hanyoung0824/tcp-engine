@@ -1,4 +1,4 @@
-# 서버 엔진: 서버 프로그램의 뼈대(Server), TCP 서버(TcpServer), 접속 받기(Listener), 세션 목록(SessionManager)
+# tcp::server: 서버 앱은 이 타깃을 링크하고 Server를 상속한다.
 add_library(tcpengine_server STATIC
 	Server.hpp
 	Server.cpp

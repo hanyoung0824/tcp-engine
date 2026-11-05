@@ -1,4 +1,4 @@
-# 클라이언트 엔진: 클라이언트 프로그램의 뼈대(Client), TCP 클라이언트(TcpClient), 접속하기(Connector)
+# tcp::client: 클라이언트 앱은 이 타깃을 링크하고 Client를 상속한다.
 add_library(tcpengine_client STATIC
 	Client.hpp
 	Client.cpp

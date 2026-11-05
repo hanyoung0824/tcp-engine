@@ -11,7 +11,6 @@ bool PacketReader::readUInt16(std::uint16_t& out)
 		return false;
 	}
 
-	// little-endian: 낮은 바이트가 먼저 온다.
 	out = static_cast<std::uint16_t>(m_data[m_position] | (m_data[m_position + 1] << 8));
 	m_position += 2;
 	return true;

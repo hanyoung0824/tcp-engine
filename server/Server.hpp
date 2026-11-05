@@ -15,7 +15,7 @@
 //   class ChatServer : public Server
 //   {
 //   public:
-//       ChatServer() { registerPacket<ChatPacket>(); }   // ChatPacket : C2S_Chat, handle() 오버라이드
+//       ChatServer() { registerPacket<C2S_ChatHandler>(); }   // C2S_ChatHandler : C2S_Chat, handle() 오버라이드
 //   };
 //   int main() { return ChatServer().run(12345); }
 //

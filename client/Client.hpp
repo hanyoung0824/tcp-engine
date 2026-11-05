@@ -19,7 +19,7 @@
 //   class ChatClient : public Client
 //   {
 //   public:
-//       ChatClient() { registerPacket<ChatNotifyPacket>(); }   // ChatNotifyPacket : S2C_ChatNotify, handle() 오버라이드
+//       ChatClient() { registerPacket<S2C_ChatNotifyHandler>(); }   // S2C_ChatNotifyHandler : S2C_ChatNotify, handle() 오버라이드
 //   };
 //   int main() { return ChatClient().run("127.0.0.1", 12345); }
 //

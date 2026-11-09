@@ -37,9 +37,9 @@ protected:
 
 	virtual void onStop() {}
 
-	virtual void onConnected(const std::shared_ptr<Session>&) {}
+	virtual void onSessionConnected(const std::shared_ptr<Session>&) {}
 
-	virtual void onDisconnected(const std::shared_ptr<Session>&) {}
+	virtual void onSessionDisconnected(const std::shared_ptr<Session>&) {}
 
 private:
 	bool addPacketDispatcher(std::uint16_t id, detail::PacketDispatcher dispatcher);

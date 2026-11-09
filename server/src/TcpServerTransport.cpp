@@ -1,4 +1,4 @@
-#include "TcpServer.hpp"
+#include "TcpServerTransport.hpp"
 
 #include "Log.hpp"
 
@@ -10,22 +10,21 @@ using asio::ip::tcp;
 
 namespace tcpengine
 {
-TcpServer::TcpServer(unsigned short port, TcpSession::EventHandler handler, HeartbeatSettings heartbeat,
-	std::shared_ptr<const Session::Buffer> pingData)
-	: m_sessionManager(std::move(handler), heartbeat, std::move(pingData)),
+TcpServerTransport::TcpServerTransport(unsigned short port, std::shared_ptr<const SessionConfig> config)
+	: m_sessionManager(std::move(config)),
 	m_listener(m_ioContext, tcp::endpoint(tcp::v4(), port)),
 	m_signals(m_ioContext, SIGINT, SIGTERM)
 {
 }
 
-bool TcpServer::start()
+bool TcpServerTransport::start()
 {
 	if (!m_listener.open()) {
 		return false;
 	}
 
 	m_listener.start([this](tcp::socket socket) {
-		m_sessionManager.create(std::move(socket));
+		m_sessionManager.createSession(std::move(socket));
 	});
 
 	m_signals.async_wait([this](const boost::system::error_code& ec, int signalNumber) {
@@ -40,12 +39,12 @@ bool TcpServer::start()
 	return true;
 }
 
-void TcpServer::run()
+void TcpServerTransport::run()
 {
 	m_ioContext.run();
 }
 
-void TcpServer::stop()
+void TcpServerTransport::stop()
 {
 	asio::post(m_ioContext, [this] {
 		boost::system::error_code ec;

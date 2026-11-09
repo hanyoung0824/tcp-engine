@@ -16,12 +16,10 @@ namespace
 	constexpr std::size_t receiveBufferSize = 64 * 1024;
 }
 
-TcpSession::TcpSession(tcp::socket socket, EventHandler handler, HeartbeatSettings heartbeat,
-	std::shared_ptr<const Buffer> pingData, SessionId id, CloseCallback onClosed)
+TcpSession::TcpSession(tcp::socket socket, std::shared_ptr<const SessionConfig> config,
+	SessionId id, CloseCallback onClosed)
 	: m_socket(std::move(socket)),
-	m_handler(std::move(handler)),
-	m_heartbeat(std::move(heartbeat)),
-	m_pingData(std::move(pingData)),
+	m_config(std::move(config)),
 	m_heartbeatTimer(m_socket.get_executor()),
 	m_id(id),
 	m_onClosed(std::move(onClosed)),
@@ -42,8 +40,8 @@ void TcpSession::start()
 {
 	writeLog(LogLevel::Info, "[thread ", std::this_thread::get_id(), "] Connected: ", m_address);
 
-	if (m_handler.onConnected) {
-		m_handler.onConnected(shared_from_this());
+	if (m_config->handler.onConnected) {
+		m_config->handler.onConnected(shared_from_this());
 	}
 
 	if (m_closed) {
@@ -53,7 +51,7 @@ void TcpSession::start()
 	m_lastReceiveTime = std::chrono::steady_clock::now();
 	startRead();
 
-	if (m_heartbeat.interval.count() > 0) {
+	if (m_config->heartbeat.interval.count() > 0) {
 		startHeartbeat();
 	}
 }
@@ -84,8 +82,8 @@ void TcpSession::close()
 	m_socket.shutdown(tcp::socket::shutdown_both, ec);
 	m_socket.close(ec);
 
-	if (m_handler.onDisconnected) {
-		m_handler.onDisconnected(shared_from_this());
+	if (m_config->handler.onDisconnected) {
+		m_config->handler.onDisconnected(shared_from_this());
 	}
 
 	if (m_onClosed) {
@@ -118,7 +116,7 @@ void TcpSession::onRead(const boost::system::error_code& ec, std::size_t length)
 	m_lastReceiveTime = std::chrono::steady_clock::now();
 	m_receivedLength += length;
 
-	const std::optional<std::size_t> result = m_handler.onReceive(shared_from_this(),
+	const std::optional<std::size_t> result = m_config->handler.onReceive(shared_from_this(),
 		std::span<const std::uint8_t>(m_receiveBuffer.data(), m_receivedLength));
 
 	if (m_closed) {
@@ -179,7 +177,7 @@ void TcpSession::onWrite(const boost::system::error_code& ec, std::size_t)
 
 void TcpSession::startHeartbeat()
 {
-	m_heartbeatTimer.expires_after(m_heartbeat.interval);
+	m_heartbeatTimer.expires_after(m_config->heartbeat.interval);
 	m_heartbeatTimer.async_wait([self = shared_from_this()](const boost::system::error_code& ec) {
 		self->onHeartbeat(ec);
 	});
@@ -192,13 +190,13 @@ void TcpSession::onHeartbeat(const boost::system::error_code& ec)
 	}
 
 	const auto idleTime = std::chrono::steady_clock::now() - m_lastReceiveTime;
-	if (m_heartbeat.timeout.count() > 0 && idleTime >= m_heartbeat.timeout) {
+	if (m_config->heartbeat.timeout.count() > 0 && idleTime >= m_config->heartbeat.timeout) {
 		writeLog(LogLevel::Warning, "Heartbeat timeout from ", m_address, ", closing");
 		close();
 		return;
 	}
 
-	send(m_pingData);
+	send(m_config->pingData);
 	startHeartbeat();
 }
 }

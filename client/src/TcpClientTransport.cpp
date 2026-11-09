@@ -1,4 +1,4 @@
-#include "TcpClient.hpp"
+#include "TcpClientTransport.hpp"
 
 #include "Connector.hpp"
 #include "Log.hpp"
@@ -8,18 +8,12 @@ using asio::ip::tcp;
 
 namespace tcpengine
 {
-TcpClient::TcpClient(TcpSession::EventHandler handler)
-	: m_handler(std::move(handler))
-{
-}
-
-TcpClient::~TcpClient()
+TcpClientTransport::~TcpClientTransport()
 {
 	close();
 }
 
-bool TcpClient::connect(const std::string& host, unsigned short port, HeartbeatSettings heartbeat,
-	std::shared_ptr<const Session::Buffer> pingData)
+bool TcpClientTransport::connect(const std::string& host, unsigned short port, std::shared_ptr<const SessionConfig> config)
 {
 	if (m_session) {
 		writeLog(LogLevel::Error, "Already connected");
@@ -40,13 +34,13 @@ bool TcpClient::connect(const std::string& host, unsigned short port, HeartbeatS
 	}
 
 	// onConnected도 네트워크 스레드에서 호출되도록 start()를 넘김
-	m_session = std::make_shared<TcpSession>(std::move(socket), m_handler, heartbeat, std::move(pingData), 0);
+	m_session = std::make_shared<TcpSession>(std::move(socket), std::move(config), 0);
 	asio::post(m_ioContext, [session = m_session] { session->start(); });
 	m_networkThread = std::thread([this] { m_ioContext.run(); });
 	return true;
 }
 
-void TcpClient::send(std::shared_ptr<const Session::Buffer> data)
+void TcpClientTransport::send(std::shared_ptr<const Session::Buffer> data)
 {
 	if (!m_session) {
 		return;
@@ -57,7 +51,7 @@ void TcpClient::send(std::shared_ptr<const Session::Buffer> data)
 	});
 }
 
-void TcpClient::close()
+void TcpClientTransport::close()
 {
 	if (!m_networkThread.joinable()) {
 		return;

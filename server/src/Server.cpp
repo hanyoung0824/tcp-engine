@@ -2,9 +2,10 @@
 
 #include "ConsoleLogger.hpp"
 #include "PacketManager.hpp"
-#include "TcpServer.hpp"
-#include "TcpSession.hpp"
+#include "SessionConfig.hpp"
+#include "TcpServerTransport.hpp"
 
+#include <memory>
 #include <span>
 
 namespace tcpengine
@@ -45,22 +46,25 @@ int Server::run(const ServerSettings& settings)
 		return 1;
 	}
 
-	TcpSession::EventHandler handler;
-	handler.onConnected = [this](const std::shared_ptr<Session>& session) {
-		onConnected(session);
+	auto config = std::make_shared<SessionConfig>();
+	config->handler.onConnected = [this](const std::shared_ptr<Session>& session) {
+		onSessionConnected(session);
 	};
-	handler.onReceive = [this](const std::shared_ptr<Session>& session, std::span<const std::uint8_t> data) {
+	config->handler.onReceive = [this](const std::shared_ptr<Session>& session, std::span<const std::uint8_t> data) {
 		return m_packetManager->onReceive(session, data);
 	};
-	handler.onDisconnected = [this](const std::shared_ptr<Session>& session) {
-		onDisconnected(session);
+	config->handler.onDisconnected = [this](const std::shared_ptr<Session>& session) {
+		onSessionDisconnected(session);
 	};
+	config->heartbeat = settings.heartbeat;
+	config->pingData = PacketManager::makeHeartbeatPacket();
 
-	TcpServer server(settings.port, std::move(handler), settings.heartbeat, PacketManager::makeHeartbeatPacket());
-	if (!server.start()) {
+	// 다른 프로토콜을 쓰려면 여기서 해당 ServerTransport 구현을 만듦
+	std::unique_ptr<ServerTransport> transport = std::make_unique<TcpServerTransport>(settings.port, std::move(config));
+	if (!transport->start()) {
 		return 1;
 	}
-	server.run();
+	transport->run();
 
 	onStop();
 	return 0;

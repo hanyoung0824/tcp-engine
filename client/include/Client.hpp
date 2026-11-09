@@ -10,8 +10,8 @@
 
 namespace tcpengine
 {
+class ClientTransport;
 class PacketManager;
-class TcpClient;
 
 // registerHandler()는 파생 클래스 생성자에서 run() 전에 호출
 class Client
@@ -51,9 +51,9 @@ private:
 	bool addPacketDispatcher(std::uint16_t id, detail::PacketDispatcher dispatcher);
 
 private:
-	// m_client(네트워크 스레드)가 먼저 소멸해야 하므로 m_packetManager를 앞에 둠
+	// m_transport(네트워크 스레드)가 먼저 소멸해야 하므로 m_packetManager를 앞에 둠
 	std::unique_ptr<PacketManager> m_packetManager;
-	std::unique_ptr<TcpClient> m_client;
+	std::unique_ptr<ClientTransport> m_transport;
 	bool m_running = false;
 };
 }

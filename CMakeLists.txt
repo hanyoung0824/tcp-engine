@@ -21,14 +21,17 @@ add_library(tcp_engine STATIC
 	common/src/PacketManager.cpp
 	common/src/PacketReader.cpp
 	common/src/PacketWriter.cpp
+	common/src/SessionConfig.hpp
+	common/src/SessionEventHandler.hpp
 	common/src/TcpSession.hpp
 	common/src/TcpSession.cpp
 
 	server/include/Server.hpp
 	server/include/ServerSettings.hpp
 	server/src/Server.cpp
-	server/src/TcpServer.hpp
-	server/src/TcpServer.cpp
+	server/src/ServerTransport.hpp
+	server/src/TcpServerTransport.hpp
+	server/src/TcpServerTransport.cpp
 	server/src/Listener.hpp
 	server/src/Listener.cpp
 	server/src/SessionManager.hpp
@@ -37,8 +40,9 @@ add_library(tcp_engine STATIC
 	client/include/Client.hpp
 	client/include/ClientSettings.hpp
 	client/src/Client.cpp
-	client/src/TcpClient.hpp
-	client/src/TcpClient.cpp
+	client/src/ClientTransport.hpp
+	client/src/TcpClientTransport.hpp
+	client/src/TcpClientTransport.cpp
 	client/src/Connector.hpp
 	client/src/Connector.cpp
 )

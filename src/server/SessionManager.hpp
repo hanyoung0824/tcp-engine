@@ -33,7 +33,7 @@ public:
 	SessionManager(const SessionManager&) = delete;
 	SessionManager& operator=(const SessionManager&) = delete;
 
-	// 연결에 이미 세션이 있으면 nullptr
+	// 연결에 이미 세션이 있거나 stop() 뒤면 nullptr
 	std::shared_ptr<Session> start(const std::shared_ptr<Connection>& connection);
 
 	std::shared_ptr<Session> find(const Connection& connection) const;
@@ -44,11 +44,13 @@ public:
 	// 연결이 닫힐 때 호출. 세션이 있으면 분리하고 만료 타이머를 시작
 	void onConnectionClosed(const Connection& connection);
 
-	// 서버 종료 시 남은 세션을 모두 끝냄
-	void endAll();
+	// 서버 종료 시 남은 세션을 모두 끝내고 이후 start(), resume()을 거부함
+	void stop();
 
 private:
 	class ServerSession;
+
+	void endAll();
 
 	void attach(ServerSession& session, const std::shared_ptr<Connection>& connection);
 
@@ -63,5 +65,6 @@ private:
 	std::unordered_map<std::string, Session::SessionId> m_idsByToken;
 	std::unordered_map<Connection::ConnectionId, Session::SessionId> m_idsByConnection;
 	Session::SessionId m_nextId = 1;
+	bool m_stopped = false;
 };
 }

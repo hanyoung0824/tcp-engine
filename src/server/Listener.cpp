@@ -2,13 +2,21 @@
 
 #include "Logger.hpp"
 
+#include <chrono>
+
 namespace asio = boost::asio;
 using asio::ip::tcp;
 
 namespace tcpengine
 {
-Listener::Listener(asio::io_context& ioContext, const tcp::endpoint& endPoint)
-	: m_acceptor(ioContext),
+namespace
+{
+	constexpr std::chrono::milliseconds acceptRetryDelay{ 500 };
+}
+
+Listener::Listener(asio::any_io_executor executor, const tcp::endpoint& endPoint)
+	: m_acceptor(executor),
+	m_retryTimer(executor),
 	m_endPoint(endPoint)
 {
 }
@@ -59,6 +67,7 @@ void Listener::close()
 {
 	boost::system::error_code ec;
 	m_acceptor.close(ec);
+	m_retryTimer.cancel();
 }
 
 void Listener::startAccept()
@@ -70,17 +79,32 @@ void Listener::startAccept()
 
 void Listener::onAccept(const boost::system::error_code& ec, tcp::socket socket)
 {
-	if (ec == asio::error::operation_aborted) {
+	// close() 직전에 수락이 끝나 성공으로 들어온 경우도 있음. 닫힌 acceptor에 다시 걸면 바로 실패해 끝없이 반복함
+	if (ec == asio::error::operation_aborted || !m_acceptor.is_open()) {
 		return;
 	}
 
-	if (ec) {
-		engineLogWarning("Failed to accept: ", ec.message());
-	}
-	else {
-		m_onAccept(std::move(socket));
+	// 상대가 수락 전에 끊은 경우는 서버 문제가 아니므로 바로 다음 접속을 받음
+	if (ec && ec != asio::error::connection_aborted) {
+		engineLogWarning("Failed to accept: ", ec.message(), ", retrying in ", acceptRetryDelay.count(), "ms");
+		retryAcceptLater();
+		return;
 	}
 
+	if (!ec) {
+		m_onAccept(std::move(socket));
+	}
 	startAccept();
+}
+
+void Listener::retryAcceptLater()
+{
+	m_retryTimer.expires_after(acceptRetryDelay);
+	m_retryTimer.async_wait([this](const boost::system::error_code& ec) {
+		if (ec || !m_acceptor.is_open()) {
+			return;
+		}
+		startAccept();
+	});
 }
 }

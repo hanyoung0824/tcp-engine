@@ -4,11 +4,11 @@
 
 namespace tcpengine
 {
-std::unique_ptr<ClientTransport> makeClientTransport(TransportType type)
+std::unique_ptr<ClientTransport> makeClientTransport(const ClientSettings& settings)
 {
-	switch (type) {
+	switch (settings.transport) {
 	case TransportType::Tcp:
-		return std::make_unique<TcpClientTransport>();
+		return std::make_unique<TcpClientTransport>(settings.closeTimeout);
 	}
 	return nullptr;
 }

@@ -4,6 +4,8 @@
 
 #include <nlohmann/json.hpp>
 
+#include <chrono>
+#include <cstdint>
 #include <exception>
 #include <optional>
 #include <stdexcept>
@@ -18,6 +20,9 @@ void ClientSettings::validate() const
 	}
 	if (port == 0) {
 		throw std::invalid_argument("port must be between 1 and 65535");
+	}
+	if (closeTimeout.count() < 0) {
+		throw std::invalid_argument("closeTimeout must not be negative");
 	}
 }
 
@@ -40,6 +45,7 @@ ClientSettings ClientSettings::fromJson(const nlohmann::json& file)
 			throw std::invalid_argument("port must be between 1 and 65535");
 		}
 		settings.port = static_cast<unsigned short>(port);
+		settings.closeTimeout = std::chrono::seconds(engine.at("closeTimeout").get<std::int64_t>());
 
 		settings.validate();
 		return settings;

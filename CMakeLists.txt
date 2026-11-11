@@ -113,6 +113,8 @@ tcp_engine_add_layer(tcp_engine_server server
 	${SOURCE_DIR}/server/ServerTransportFactory.cpp
 	${SOURCE_DIR}/server/SessionManager.hpp
 	${SOURCE_DIR}/server/SessionManager.cpp
+	${SOURCE_DIR}/server/ShutdownSignal.hpp
+	${SOURCE_DIR}/server/ShutdownSignal.cpp
 	${SOURCE_DIR}/server/ConnectionManager.hpp
 	${SOURCE_DIR}/server/ConnectionManager.cpp
 	${SOURCE_DIR}/server/TcpServerTransport.hpp

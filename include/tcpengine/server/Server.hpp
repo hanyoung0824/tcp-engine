@@ -7,8 +7,14 @@
 #include "tcpengine/utility/Log.hpp"
 #include "tcpengine/utility/LogSink.hpp"
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
+
+namespace boost::asio
+{
+class io_context;
+}
 
 namespace tcpengine
 {
@@ -17,6 +23,7 @@ class HeartbeatMonitor;
 class PacketManager;
 class ServerTransport;
 class SessionManager;
+class ShutdownSignal;
 
 // registerHandler()는 파생 클래스 생성자에서 run() 전에 호출
 class Server
@@ -28,7 +35,13 @@ public:
 	Server& operator=(const Server&) = delete;
 
 	// 로거는 엔진 로그와 응용 로그를 각각 출력할 곳. 설정 검사도 여기서 하며 실패하면 로그를 남기고 1 반환
+	// 한 번만 호출할 수 있음
 	int run(std::shared_ptr<LogSink> engineLogSink, std::shared_ptr<LogSink> appLogSink);
+
+	// 어느 스레드에서 불러도 되고 여러 번 불러도 한 번만 처리함. SIGINT, SIGTERM도 이 함수를 거침
+	// 접속 받기 중단 → 세션 모두 끝냄(onSessionEnded) → 연결마다 남은 데이터를 보내고 닫음 → run() 반환
+	// 종료 중에는 새 연결과 새 세션을 받지 않음. run() 전에 부르면 run()이 시작하자마자 종료함
+	void stop();
 
 protected:
 	// 설정 파일에서 읽으려면 ServerSettings::create() 또는 ServerSettings::fromJson()을 씀
@@ -83,6 +96,9 @@ private:
 	// m_settings를 검증하고 실행
 	int start();
 
+	// 네트워크 스레드에서 종료 과정을 진행
+	void shutdown();
+
 	// 엔진 제어 패킷(Resume) 처리 등록
 	void registerControlHandlers();
 
@@ -90,18 +106,24 @@ private:
 	std::shared_ptr<const ConnectionEventHandler> makeConnectionEvents(std::shared_ptr<const Connection::Buffer> serverHello);
 
 	// 세션 콜백을 응용 훅(onSession*)으로 이어 줌
-	void createSessionManager(ServerTransport& transport);
+	void createSessionManager();
 
 	bool addPacketDispatcher(std::uint16_t id, detail::PacketDispatcher dispatcher);
 
 	bool addSessionDispatcher(std::uint16_t id, detail::TargetDispatcher<Session> dispatcher);
 
 private:
+	// 네트워크 이벤트 루프. Server와 수명이 같아 stop()이 언제든 작업을 넘길 수 있음
+	// 멈춘 뒤 남은 핸들러가 다른 멤버를 잡고 있을 수 있으므로 가장 앞에 두어 가장 나중에 소멸
+	std::unique_ptr<boost::asio::io_context> m_ioContext;
 	std::unique_ptr<PacketManager> m_packetManager;
-	// start() 동안만 있음
+	// 아래 넷은 start() 동안만 있음
 	std::unique_ptr<HeartbeatMonitor> m_heartbeatMonitor;
 	std::unique_ptr<SessionManager> m_sessionManager;
+	std::unique_ptr<ServerTransport> m_transport;
+	std::unique_ptr<ShutdownSignal> m_shutdownSignal;
 	const ServerSettings m_settings;
 	bool m_running = false;
+	std::atomic<bool> m_stopRequested{ false };
 };
 }

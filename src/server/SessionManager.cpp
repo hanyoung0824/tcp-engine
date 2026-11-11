@@ -68,14 +68,14 @@ SessionManager::SessionManager(boost::asio::any_io_executor executor, std::chron
 
 SessionManager::~SessionManager()
 {
-	// 정상 종료 때는 Server가 endAll()을 먼저 부름. 여기서는 콜백 없이 타이머와 연결만 정리
+	// 정상 종료 때는 Server가 stop()을 먼저 부름. 여기서는 콜백 없이 타이머와 연결만 정리
 	m_callbacks = {};
 	endAll();
 }
 
 std::shared_ptr<Session> SessionManager::start(const std::shared_ptr<Connection>& connection)
 {
-	if (connection->isClosed()) {
+	if (m_stopped || connection->isClosed()) {
 		return nullptr;
 	}
 	if (m_idsByConnection.contains(connection->getId())) {
@@ -110,7 +110,7 @@ std::shared_ptr<Session> SessionManager::find(const Connection& connection) cons
 void SessionManager::resume(const std::shared_ptr<Connection>& connection, const std::string& token)
 {
 	const auto idIt = m_idsByToken.find(token);
-	if (idIt == m_idsByToken.end() || m_idsByConnection.contains(connection->getId())) {
+	if (m_stopped || idIt == m_idsByToken.end() || m_idsByConnection.contains(connection->getId())) {
 		engineLogInfo("Resume failed from ", connection->getAddress());
 		connection->send(PacketManager::makeControlPacket(ControlType::ResumeFailed));
 		return;
@@ -166,6 +166,12 @@ void SessionManager::onConnectionClosed(const Connection& connection)
 	if (m_callbacks.onDetached) {
 		m_callbacks.onDetached(session);
 	}
+}
+
+void SessionManager::stop()
+{
+	m_stopped = true;
+	endAll();
 }
 
 void SessionManager::endAll()

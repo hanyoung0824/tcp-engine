@@ -36,6 +36,9 @@ void ServerSettings::validate() const
 	if (port == 0) {
 		throw std::invalid_argument("port must be between 1 and 65535");
 	}
+	if (closeTimeout.count() < 0) {
+		throw std::invalid_argument("closeTimeout must not be negative");
+	}
 	heartbeat.validate();
 	session.validate();
 }
@@ -60,6 +63,7 @@ ServerSettings ServerSettings::fromJson(const nlohmann::json& file)
 
 		settings.heartbeat = readHeartbeat(engine.at("heartbeat"));
 		settings.session.resumeTimeout = std::chrono::seconds(engine.at("session").at("resumeTimeout").get<std::int64_t>());
+		settings.closeTimeout = std::chrono::seconds(engine.at("closeTimeout").get<std::int64_t>());
 
 		settings.validate();
 		return settings;

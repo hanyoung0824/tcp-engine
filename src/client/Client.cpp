@@ -79,7 +79,7 @@ int Client::start()
 	}
 
 	// 다른 프로토콜은 settings.transport로 고름
-	m_transport = makeClientTransport(m_settings.transport);
+	m_transport = makeClientTransport(m_settings);
 	if (!m_transport) {
 		engineLogError("Unsupported transport");
 		return 1;

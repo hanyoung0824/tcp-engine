@@ -37,8 +37,11 @@ public:
 		return true;
 	}
 
+	// 쌓인 데이터를 다 보내고 상대가 끊으면 닫음. 그 사이 받은 패킷은 처리하지 않음
+	// closeTimeout 안에 끝나지 않으면 남은 데이터를 버리고 닫음. onDisconnected는 실제로 닫힐 때 불림
 	virtual void close() = 0;
 
+	// close()가 불린 뒤로 true
 	virtual bool isClosed() const = 0;
 
 	virtual ConnectionId getId() const = 0;

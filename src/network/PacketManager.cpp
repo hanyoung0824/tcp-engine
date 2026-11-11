@@ -1,48 +1,73 @@
 #include "PacketManager.hpp"
 
 #include "Logger.hpp"
-#include "PacketHeader.hpp"
 #include "tcpengine/network/packet/PacketWriter.hpp"
 
 #include <chrono>
 #include <limits>
+#include <stdexcept>
 
 namespace tcpengine
 {
-namespace
+std::shared_ptr<const Connection::Buffer> PacketManager::makeControlPacket(ControlType type)
 {
-	std::shared_ptr<const Session::Buffer> makeControlPacket(ControlType type)
-	{
-		PacketWriter writer(controlPacketId);
-		writer.writeUInt16(static_cast<std::uint16_t>(type));
-		return std::make_shared<const Session::Buffer>(*writer.finish());
-	}
+	PacketWriter writer(controlPacketId);
+	writer.writeUInt16(static_cast<std::uint16_t>(type));
+	return std::make_shared<const Connection::Buffer>(*writer.finish());
 }
 
-std::shared_ptr<const Session::Buffer> PacketManager::makePingPacket()
+std::shared_ptr<const Connection::Buffer> PacketManager::makeControlPacket(ControlType type, std::string_view text)
 {
-	static const std::shared_ptr<const Session::Buffer> packet = makeControlPacket(ControlType::Ping);
+	PacketWriter writer(controlPacketId);
+	writer.writeUInt16(static_cast<std::uint16_t>(type));
+	writer.writeString(text);
+	return std::make_shared<const Connection::Buffer>(*writer.finish());
+}
+
+std::shared_ptr<const Connection::Buffer> PacketManager::makePingPacket()
+{
+	static const std::shared_ptr<const Connection::Buffer> packet = makeControlPacket(ControlType::Ping);
 	return packet;
 }
 
-std::shared_ptr<const Session::Buffer> PacketManager::makePongPacket()
+std::shared_ptr<const Connection::Buffer> PacketManager::makePongPacket()
 {
-	static const std::shared_ptr<const Session::Buffer> packet = makeControlPacket(ControlType::Pong);
+	static const std::shared_ptr<const Connection::Buffer> packet = makeControlPacket(ControlType::Pong);
 	return packet;
 }
 
-std::shared_ptr<const Session::Buffer> PacketManager::makeHeartbeatConfigPacket(const HeartbeatSettings& heartbeat)
+std::shared_ptr<const Connection::Buffer> PacketManager::makeServerHelloPacket(const ServerHello& hello)
 {
+	const HeartbeatSettings& heartbeat = hello.heartbeat;
 	constexpr auto maxSeconds = std::numeric_limits<std::uint16_t>::max();
 	if (heartbeat.interval.count() > maxSeconds || heartbeat.timeout.count() > maxSeconds) {
 		return nullptr;
 	}
 
 	PacketWriter writer(controlPacketId);
-	writer.writeUInt16(static_cast<std::uint16_t>(ControlType::HeartbeatConfig));
+	writer.writeUInt16(static_cast<std::uint16_t>(ControlType::ServerHello));
 	writer.writeUInt16(static_cast<std::uint16_t>(heartbeat.interval.count()));
 	writer.writeUInt16(static_cast<std::uint16_t>(heartbeat.timeout.count()));
-	return std::make_shared<const Session::Buffer>(*writer.finish());
+	return std::make_shared<const Connection::Buffer>(*writer.finish());
+}
+
+std::optional<ServerHello> PacketManager::readServerHello(PacketReader& body)
+{
+	std::uint16_t interval = 0;
+	std::uint16_t timeout = 0;
+	if (!body.readUInt16(interval) || !body.readUInt16(timeout) || !body.isEnd()) {
+		return std::nullopt;
+	}
+
+	ServerHello hello;
+	hello.heartbeat = HeartbeatSettings{ std::chrono::seconds(interval), std::chrono::seconds(timeout) };
+	try {
+		hello.heartbeat.validate();
+	}
+	catch (const std::invalid_argument&) {
+		return std::nullopt;
+	}
+	return hello;
 }
 
 bool PacketManager::addDispatcher(std::uint16_t id, detail::PacketDispatcher dispatcher)
@@ -59,16 +84,16 @@ bool PacketManager::addDispatcher(std::uint16_t id, detail::PacketDispatcher dis
 	return true;
 }
 
-void PacketManager::setHeartbeatConfigHandler(HeartbeatConfigHandler handler)
+void PacketManager::setControlHandler(ControlType type, ControlHandler handler)
 {
-	m_heartbeatConfigHandler = std::move(handler);
+	m_controlHandlers[static_cast<std::uint16_t>(type)] = std::move(handler);
 }
 
-std::optional<std::size_t> PacketManager::onReceive(const std::shared_ptr<Session>& session,
+std::optional<std::size_t> PacketManager::onReceive(const std::shared_ptr<Connection>& connection,
 	std::span<const std::uint8_t> data) const
 {
 	std::size_t processed = 0;
-	while (!session->isClosed()) {
+	while (!connection->isClosed()) {
 		const std::span<const std::uint8_t> rest = data.subspan(processed);
 
 		if (rest.size() < packetHeaderSize) {
@@ -82,7 +107,7 @@ std::optional<std::size_t> PacketManager::onReceive(const std::shared_ptr<Sessio
 		header.readUInt16(id);
 
 		if (size < packetHeaderSize || size > maxPacketSize) {
-			engineLogWarning("Invalid packet size ", size, " from ", session->getAddress());
+			engineLogWarning("Invalid packet size ", size, " from ", connection->getAddress());
 			return std::nullopt;
 		}
 
@@ -93,8 +118,8 @@ std::optional<std::size_t> PacketManager::onReceive(const std::shared_ptr<Sessio
 		PacketReader body(rest.subspan(packetHeaderSize, size - packetHeaderSize));
 
 		if (id == controlPacketId) {
-			if (!handleControlPacket(session, body)) {
-				engineLogWarning("Invalid control packet from ", session->getAddress());
+			if (!handleControlPacket(connection, body)) {
+				engineLogWarning("Invalid control packet from ", connection->getAddress());
 				return std::nullopt;
 			}
 			processed += size;
@@ -103,12 +128,12 @@ std::optional<std::size_t> PacketManager::onReceive(const std::shared_ptr<Sessio
 
 		const auto it = m_dispatchers.find(id);
 		if (it == m_dispatchers.end()) {
-			engineLogWarning("Unknown packet id ", id, " from ", session->getAddress());
+			engineLogWarning("Unknown packet id ", id, " from ", connection->getAddress());
 			return std::nullopt;
 		}
 
-		if (!it->second(session, body)) {
-			engineLogWarning("Invalid packet id ", id, " from ", session->getAddress());
+		if (!it->second(connection, body)) {
+			engineLogWarning("Invalid packet id ", id, " from ", connection->getAddress());
 			return std::nullopt;
 		}
 
@@ -117,7 +142,7 @@ std::optional<std::size_t> PacketManager::onReceive(const std::shared_ptr<Sessio
 	return processed;
 }
 
-bool PacketManager::handleControlPacket(const std::shared_ptr<Session>& session, PacketReader& body) const
+bool PacketManager::handleControlPacket(const std::shared_ptr<Connection>& connection, PacketReader& body) const
 {
 	std::uint16_t type = 0;
 	if (!body.readUInt16(type)) {
@@ -129,27 +154,17 @@ bool PacketManager::handleControlPacket(const std::shared_ptr<Session>& session,
 		if (!body.isEnd()) {
 			return false;
 		}
-		session->send(makePongPacket());
+		connection->send(makePongPacket());
 		return true;
 
 	case ControlType::Pong:
 		return body.isEnd();
 
-	case ControlType::HeartbeatConfig: {
-		std::uint16_t interval = 0;
-		std::uint16_t timeout = 0;
-		if (!m_heartbeatConfigHandler || !body.readUInt16(interval) || !body.readUInt16(timeout) || !body.isEnd()) {
-			return false;
-		}
+	default:
+		break;
+	}
 
-		const HeartbeatSettings heartbeat{ std::chrono::seconds(interval), std::chrono::seconds(timeout) };
-		if (!isValid(heartbeat)) {
-			return false;
-		}
-		m_heartbeatConfigHandler(session, heartbeat);
-		return true;
-	}
-	}
-	return false;
+	const auto it = m_controlHandlers.find(type);
+	return it != m_controlHandlers.end() && it->second(connection, body);
 }
 }

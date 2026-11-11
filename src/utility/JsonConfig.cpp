@@ -1,41 +1,29 @@
 #include "tcpengine/utility/JsonConfig.hpp"
 
-#include "Logger.hpp"
-
 #include <fstream>
 #include <stdexcept>
 #include <string>
 
 namespace tcpengine
 {
-std::optional<nlohmann::json> loadJsonFile(const std::filesystem::path& path)
+nlohmann::json loadJsonFile(const std::filesystem::path& path)
 {
 	std::ifstream file(path);
 	if (!file) {
-		engineLogError("Cannot open ", path.string());
-		return std::nullopt;
+		throw std::runtime_error("cannot open file");
 	}
 
+	nlohmann::json json;
 	try {
-		nlohmann::json json = nlohmann::json::parse(file);
-		if (!json.is_object()) {
-			engineLogError(path.string(), ": top level must be an object");
-			return std::nullopt;
-		}
-		return json;
+		json = nlohmann::json::parse(file);
 	}
 	catch (const nlohmann::json::exception& e) {
-		engineLogError(path.string(), ": ", e.what());
-		return std::nullopt;
+		throw std::runtime_error(e.what());
 	}
-}
 
-unsigned short readPort(const nlohmann::json& json)
-{
-	const int value = json.at("port").get<int>();
-	if (value < 1 || value > 65535) {
-		throw std::invalid_argument("port must be between 1 and 65535");
+	if (!json.is_object()) {
+		throw std::runtime_error("top level must be an object");
 	}
-	return static_cast<unsigned short>(value);
+	return json;
 }
 }

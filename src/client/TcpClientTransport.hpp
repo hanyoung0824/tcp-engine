@@ -1,8 +1,8 @@
 #pragma once
 
 #include "ClientTransport.hpp"
-#include "SessionConfig.hpp"
-#include "TcpSession.hpp"
+#include "ConnectionEventHandler.hpp"
+#include "TcpConnection.hpp"
 
 #include <boost/asio.hpp>
 
@@ -22,19 +22,19 @@ public:
 	TcpClientTransport(const TcpClientTransport&) = delete;
 	TcpClientTransport& operator=(const TcpClientTransport&) = delete;
 
-	bool connect(const std::string& host, unsigned short port, std::shared_ptr<const SessionConfig> config) override;
+	bool connect(const std::string& host, unsigned short port, std::shared_ptr<const ConnectionEventHandler> handler) override;
 
-	void startHeartbeat(const HeartbeatSettings& heartbeat, std::shared_ptr<const Session::Buffer> pingData) override;
+	boost::asio::any_io_executor getExecutor() override { return m_ioContext.get_executor(); }
 
-	void send(std::shared_ptr<const Session::Buffer> data) override;
+	void send(std::shared_ptr<const Connection::Buffer> data) override;
 
 	void close() override;
 
-	bool isConnected() const override { return m_session && !m_session->isClosed(); }
+	bool isConnected() const override { return m_connection && !m_connection->isClosed(); }
 
 private:
 	boost::asio::io_context m_ioContext;
-	std::shared_ptr<TcpSession> m_session;
+	std::shared_ptr<TcpConnection> m_connection;
 	std::thread m_networkThread;
 };
 }

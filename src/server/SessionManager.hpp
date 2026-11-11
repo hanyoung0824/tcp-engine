@@ -1,35 +1,67 @@
 #pragma once
 
-#include "SessionConfig.hpp"
-#include "TcpSession.hpp"
+#include "tcpengine/network/Connection.hpp"
+#include "tcpengine/server/Session.hpp"
 
 #include <boost/asio.hpp>
 
+#include <chrono>
+#include <functional>
 #include <memory>
+#include <string>
 #include <unordered_map>
 
 namespace tcpengine
 {
+// 세션 생성, 연결 분리와 재부착, 만료를 관리함. 네트워크 스레드에서만 사용
 class SessionManager
 {
 public:
-	explicit SessionManager(std::shared_ptr<const SessionConfig> config);
+	using SessionCallback = std::function<void(const std::shared_ptr<Session>& session)>;
+
+	struct Callbacks
+	{
+		SessionCallback onStarted;
+		SessionCallback onResumed;
+		SessionCallback onDetached;
+		SessionCallback onEnded;
+	};
+
+	SessionManager(boost::asio::any_io_executor executor, std::chrono::seconds resumeTimeout, Callbacks callbacks);
+	~SessionManager();
 
 	SessionManager(const SessionManager&) = delete;
 	SessionManager& operator=(const SessionManager&) = delete;
 
-	void createSession(boost::asio::ip::tcp::socket socket);
+	// 연결에 이미 세션이 있으면 nullptr
+	std::shared_ptr<Session> start(const std::shared_ptr<Connection>& connection);
 
-	void closeAll();
+	std::shared_ptr<Session> find(const Connection& connection) const;
 
-	std::size_t size() const { return m_sessions.size(); }
+	// 클라이언트의 Resume 요청. 결과는 SessionResumed 또는 ResumeFailed로 알림
+	void resume(const std::shared_ptr<Connection>& connection, const std::string& token);
+
+	// 연결이 닫힐 때 호출. 세션이 있으면 분리하고 만료 타이머를 시작
+	void onConnectionClosed(const Connection& connection);
+
+	// 서버 종료 시 남은 세션을 모두 끝냄
+	void endAll();
 
 private:
-	void removeSession(Session::SessionId id);
+	class ServerSession;
+
+	void attach(ServerSession& session, const std::shared_ptr<Connection>& connection);
+
+	void end(ServerSession& session);
 
 private:
-	const std::shared_ptr<const SessionConfig> m_config;
-	std::unordered_map<Session::SessionId, std::shared_ptr<TcpSession>> m_sessions;
+	boost::asio::any_io_executor m_executor;
+	const std::chrono::seconds m_resumeTimeout;
+	Callbacks m_callbacks;
+
+	std::unordered_map<Session::SessionId, std::shared_ptr<ServerSession>> m_sessions;
+	std::unordered_map<std::string, Session::SessionId> m_idsByToken;
+	std::unordered_map<Connection::ConnectionId, Session::SessionId> m_idsByConnection;
 	Session::SessionId m_nextId = 1;
 };
 }

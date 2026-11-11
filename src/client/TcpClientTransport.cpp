@@ -1,6 +1,5 @@
 #include "TcpClientTransport.hpp"
 
-#include "Connector.hpp"
 #include "Logger.hpp"
 
 namespace asio = boost::asio;
@@ -13,9 +12,9 @@ TcpClientTransport::~TcpClientTransport()
 	close();
 }
 
-bool TcpClientTransport::connect(const std::string& host, unsigned short port, std::shared_ptr<const SessionConfig> config)
+bool TcpClientTransport::connect(const std::string& host, unsigned short port, std::shared_ptr<const ConnectionEventHandler> handler)
 {
-	if (m_session) {
+	if (m_connection) {
 		engineLogError("Already connected");
 		return false;
 	}
@@ -27,34 +26,29 @@ bool TcpClientTransport::connect(const std::string& host, unsigned short port, s
 		return false;
 	}
 
-	Connector connector(tcp::endpoint(address, port));
+	const tcp::endpoint endPoint(address, port);
 	tcp::socket socket(m_ioContext);
-	if (!connector.connect(socket)) {
+	socket.connect(endPoint, ec);
+	if (ec) {
+		engineLogWarning("Failed to connect to ", endPoint, ": ", ec.message());
 		return false;
 	}
 
 	// onConnected도 네트워크 스레드에서 호출되도록 start()를 넘김
-	m_session = std::make_shared<TcpSession>(std::move(socket), std::move(config), 0);
-	asio::post(m_ioContext, [session = m_session] { session->start(); });
+	m_connection = std::make_shared<TcpConnection>(std::move(socket), std::move(handler), 0);
+	asio::post(m_ioContext, [connection = m_connection] { connection->start(); });
 	m_networkThread = std::thread([this] { m_ioContext.run(); });
 	return true;
 }
 
-void TcpClientTransport::startHeartbeat(const HeartbeatSettings& heartbeat, std::shared_ptr<const Session::Buffer> pingData)
+void TcpClientTransport::send(std::shared_ptr<const Connection::Buffer> data)
 {
-	if (m_session) {
-		m_session->startHeartbeat(heartbeat, std::move(pingData));
-	}
-}
-
-void TcpClientTransport::send(std::shared_ptr<const Session::Buffer> data)
-{
-	if (!m_session) {
+	if (!m_connection) {
 		return;
 	}
 
-	asio::post(m_ioContext, [session = m_session, data = std::move(data)] {
-		session->send(data);
+	asio::post(m_ioContext, [connection = m_connection, data = std::move(data)] {
+		connection->send(data);
 	});
 }
 
@@ -64,7 +58,7 @@ void TcpClientTransport::close()
 		return;
 	}
 
-	asio::post(m_ioContext, [session = m_session] { session->close(); });
+	asio::post(m_ioContext, [connection = m_connection] { connection->close(); });
 	m_networkThread.join();
 }
 }

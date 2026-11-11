@@ -1,4 +1,4 @@
-#include "TcpSession.hpp"
+#include "TcpConnection.hpp"
 
 #include "Logger.hpp"
 
@@ -16,11 +16,10 @@ namespace
 	constexpr std::size_t receiveBufferSize = 64 * 1024;
 }
 
-TcpSession::TcpSession(tcp::socket socket, std::shared_ptr<const SessionConfig> config,
-	SessionId id, CloseCallback onClosed)
+TcpConnection::TcpConnection(tcp::socket socket, std::shared_ptr<const ConnectionEventHandler> handler,
+	ConnectionId id, CloseCallback onClosed)
 	: m_socket(std::move(socket)),
-	m_config(std::move(config)),
-	m_heartbeatTimer(m_socket.get_executor()),
+	m_handler(std::move(handler)),
 	m_id(id),
 	m_onClosed(std::move(onClosed)),
 	m_receiveBuffer(receiveBufferSize)
@@ -31,19 +30,17 @@ TcpSession::TcpSession(tcp::socket socket, std::shared_ptr<const SessionConfig> 
 	m_address = address.str();
 }
 
-TcpSession::~TcpSession()
+TcpConnection::~TcpConnection()
 {
-	engineLogDebug("Session destroyed: ", m_address);
+	engineLogDebug("Connection destroyed: ", m_address);
 }
 
-void TcpSession::start()
+void TcpConnection::start()
 {
 	engineLogInfo("[thread ", std::this_thread::get_id(), "] Connected: ", m_address);
 
-	send(m_config->greeting);
-
-	if (m_config->handler.onConnected) {
-		m_config->handler.onConnected(shared_from_this());
+	if (m_handler->onConnected) {
+		m_handler->onConnected(shared_from_this());
 	}
 
 	if (m_closed) {
@@ -51,26 +48,9 @@ void TcpSession::start()
 	}
 
 	startRead();
-	startHeartbeat(m_config->heartbeat, m_config->pingData);
 }
 
-void TcpSession::startHeartbeat(const HeartbeatSettings& heartbeat, std::shared_ptr<const Buffer> pingData)
-{
-	if (m_closed) {
-		return;
-	}
-
-	m_heartbeat = heartbeat;
-	m_pingData = std::move(pingData);
-	m_lastReceiveTime = std::chrono::steady_clock::now();
-
-	m_heartbeatTimer.cancel();
-	if (m_heartbeat.interval.count() > 0) {
-		scheduleHeartbeat();
-	}
-}
-
-void TcpSession::send(std::shared_ptr<const Buffer> data)
+void TcpConnection::send(std::shared_ptr<const Buffer> data)
 {
 	if (m_closed || !data) {
 		return;
@@ -84,20 +64,18 @@ void TcpSession::send(std::shared_ptr<const Buffer> data)
 	}
 }
 
-void TcpSession::close()
+void TcpConnection::close()
 {
 	if (m_closed.exchange(true)) {
 		return;
 	}
 
-	m_heartbeatTimer.cancel();
-
 	boost::system::error_code ec;
 	m_socket.shutdown(tcp::socket::shutdown_both, ec);
 	m_socket.close(ec);
 
-	if (m_config->handler.onDisconnected) {
-		m_config->handler.onDisconnected(shared_from_this());
+	if (m_handler->onDisconnected) {
+		m_handler->onDisconnected(shared_from_this());
 	}
 
 	if (m_onClosed) {
@@ -105,7 +83,7 @@ void TcpSession::close()
 	}
 }
 
-void TcpSession::startRead()
+void TcpConnection::startRead()
 {
 	asio::mutable_buffer freeSpace = asio::buffer(m_receiveBuffer) + m_receivedLength;
 	m_socket.async_read_some(freeSpace,
@@ -114,7 +92,7 @@ void TcpSession::startRead()
 		});
 }
 
-void TcpSession::onRead(const boost::system::error_code& ec, std::size_t length)
+void TcpConnection::onRead(const boost::system::error_code& ec, std::size_t length)
 {
 	if (ec) {
 		if (ec == asio::error::eof) {
@@ -127,10 +105,9 @@ void TcpSession::onRead(const boost::system::error_code& ec, std::size_t length)
 		return;
 	}
 
-	m_lastReceiveTime = std::chrono::steady_clock::now();
 	m_receivedLength += length;
 
-	const std::optional<std::size_t> result = m_config->handler.onReceive(shared_from_this(),
+	const std::optional<std::size_t> result = m_handler->onReceive(shared_from_this(),
 		std::span<const std::uint8_t>(m_receiveBuffer.data(), m_receivedLength));
 
 	if (m_closed) {
@@ -165,7 +142,7 @@ void TcpSession::onRead(const boost::system::error_code& ec, std::size_t length)
 	startRead();
 }
 
-void TcpSession::startWrite()
+void TcpConnection::startWrite()
 {
 	asio::async_write(m_socket, asio::buffer(*m_writeQueue.front()),
 		[self = shared_from_this()](const boost::system::error_code& ec, std::size_t length) {
@@ -173,7 +150,7 @@ void TcpSession::startWrite()
 		});
 }
 
-void TcpSession::onWrite(const boost::system::error_code& ec, std::size_t)
+void TcpConnection::onWrite(const boost::system::error_code& ec, std::size_t)
 {
 	if (ec) {
 		if (ec != asio::error::operation_aborted) {
@@ -187,30 +164,5 @@ void TcpSession::onWrite(const boost::system::error_code& ec, std::size_t)
 	if (!m_writeQueue.empty()) {
 		startWrite();
 	}
-}
-
-void TcpSession::scheduleHeartbeat()
-{
-	m_heartbeatTimer.expires_after(m_heartbeat.interval);
-	m_heartbeatTimer.async_wait([self = shared_from_this()](const boost::system::error_code& ec) {
-		self->onHeartbeat(ec);
-	});
-}
-
-void TcpSession::onHeartbeat(const boost::system::error_code& ec)
-{
-	if (ec || m_closed) {
-		return;
-	}
-
-	const auto idleTime = std::chrono::steady_clock::now() - m_lastReceiveTime;
-	if (m_heartbeat.timeout.count() > 0 && idleTime >= m_heartbeat.timeout) {
-		engineLogWarning("Heartbeat timeout from ", m_address, ", closing");
-		close();
-		return;
-	}
-
-	send(m_pingData);
-	scheduleHeartbeat();
 }
 }

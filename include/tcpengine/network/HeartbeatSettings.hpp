@@ -1,6 +1,7 @@
 #pragma once
 
 #include <chrono>
+#include <stdexcept>
 
 namespace tcpengine
 {
@@ -10,11 +11,16 @@ struct HeartbeatSettings
 {
 	std::chrono::seconds interval{ 0 };
 	std::chrono::seconds timeout{ 0 };
-};
 
-inline bool isValid(const HeartbeatSettings& heartbeat)
-{
-	return heartbeat.interval.count() >= 0 && heartbeat.timeout.count() >= 0
-		&& (heartbeat.timeout.count() == 0 || heartbeat.timeout > heartbeat.interval);
-}
+	// 틀리면 이유를 담은 std::invalid_argument를 던짐
+	void validate() const
+	{
+		if (interval.count() < 0 || timeout.count() < 0) {
+			throw std::invalid_argument("heartbeat values must not be negative");
+		}
+		if (timeout.count() != 0 && timeout <= interval) {
+			throw std::invalid_argument("heartbeat timeout must be 0 or longer than interval");
+		}
+	}
+};
 }

@@ -1,6 +1,6 @@
 #include "tcpengine/network/packet/PacketWriter.hpp"
 
-#include "tcpengine/network/packet/IPacket.hpp"
+#include "tcpengine/network/packet/Packet.hpp"
 
 #include <limits>
 

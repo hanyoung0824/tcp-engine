@@ -49,11 +49,11 @@ endfunction()
 
 # utility
 tcp_engine_add_layer(tcp_engine_utility utility
-	${INCLUDE_DIR}/utility/ConsoleLogger.hpp
+	${INCLUDE_DIR}/utility/ConsoleSink.hpp
 	${INCLUDE_DIR}/utility/JsonConfig.hpp
 	${INCLUDE_DIR}/utility/Log.hpp
-	${INCLUDE_DIR}/utility/LogInterface.hpp
-	${SOURCE_DIR}/utility/ConsoleLogger.cpp
+	${INCLUDE_DIR}/utility/LogSink.hpp
+	${SOURCE_DIR}/utility/ConsoleSink.cpp
 	${SOURCE_DIR}/utility/JsonConfig.cpp
 	${SOURCE_DIR}/utility/Logger.hpp
 	${SOURCE_DIR}/utility/Logger.cpp
@@ -62,12 +62,12 @@ add_library(tcp::utility ALIAS tcp_engine_utility)
 target_link_libraries(tcp_engine_utility PUBLIC nlohmann_json::nlohmann_json Threads::Threads)
 tcp_engine_add_internal_headers(tcp_engine_utility_internal utility)
 
-# packet (응용 protocol이 세션 등을 몰라도 되도록 network와 별도 타깃)
+# packet (응용 protocol이 연결 등을 몰라도 되도록 network와 별도 타깃)
 tcp_engine_add_layer(tcp_engine_packet network/packet
-	${INCLUDE_DIR}/network/packet/IPacket.hpp
+	${INCLUDE_DIR}/network/packet/Packet.hpp
 	${INCLUDE_DIR}/network/packet/PacketReader.hpp
 	${INCLUDE_DIR}/network/packet/PacketWriter.hpp
-	${SOURCE_DIR}/network/packet/IPacket.cpp
+	${SOURCE_DIR}/network/packet/Packet.cpp
 	${SOURCE_DIR}/network/packet/PacketReader.cpp
 	${SOURCE_DIR}/network/packet/PacketWriter.cpp
 )
@@ -77,13 +77,16 @@ add_library(tcp::packet ALIAS tcp_engine_packet)
 tcp_engine_add_layer(tcp_engine_network network
 	${INCLUDE_DIR}/network/HeartbeatSettings.hpp
 	${INCLUDE_DIR}/network/PacketDispatcher.hpp
-	${INCLUDE_DIR}/network/Session.hpp
+	${INCLUDE_DIR}/network/TransportType.hpp
+	${INCLUDE_DIR}/network/Connection.hpp
 	${SOURCE_DIR}/network/PacketHeader.hpp
 	${SOURCE_DIR}/network/PacketManager.hpp
 	${SOURCE_DIR}/network/PacketManager.cpp
-	${SOURCE_DIR}/network/SessionConfig.hpp
-	${SOURCE_DIR}/network/TcpSession.hpp
-	${SOURCE_DIR}/network/TcpSession.cpp
+	${SOURCE_DIR}/network/ConnectionEventHandler.hpp
+	${SOURCE_DIR}/network/HeartbeatMonitor.hpp
+	${SOURCE_DIR}/network/HeartbeatMonitor.cpp
+	${SOURCE_DIR}/network/TcpConnection.hpp
+	${SOURCE_DIR}/network/TcpConnection.cpp
 )
 add_library(tcp::network ALIAS tcp_engine_network)
 target_link_libraries(tcp_engine_network
@@ -100,14 +103,18 @@ tcp_engine_add_internal_headers(tcp_engine_network_internal network)
 tcp_engine_add_layer(tcp_engine_server server
 	${INCLUDE_DIR}/server/Server.hpp
 	${INCLUDE_DIR}/server/ServerSettings.hpp
+	${INCLUDE_DIR}/server/Session.hpp
 	${SOURCE_DIR}/server/Listener.hpp
 	${SOURCE_DIR}/server/Listener.cpp
 	${SOURCE_DIR}/server/Server.cpp
-	${SOURCE_DIR}/server/ServerSettingsParser.hpp
-	${SOURCE_DIR}/server/ServerSettingsParser.cpp
+	${SOURCE_DIR}/server/ServerSettings.cpp
 	${SOURCE_DIR}/server/ServerTransport.hpp
+	${SOURCE_DIR}/server/ServerTransportFactory.hpp
+	${SOURCE_DIR}/server/ServerTransportFactory.cpp
 	${SOURCE_DIR}/server/SessionManager.hpp
 	${SOURCE_DIR}/server/SessionManager.cpp
+	${SOURCE_DIR}/server/ConnectionManager.hpp
+	${SOURCE_DIR}/server/ConnectionManager.cpp
 	${SOURCE_DIR}/server/TcpServerTransport.hpp
 	${SOURCE_DIR}/server/TcpServerTransport.cpp
 )
@@ -123,11 +130,10 @@ tcp_engine_add_layer(tcp_engine_client client
 	${INCLUDE_DIR}/client/Client.hpp
 	${INCLUDE_DIR}/client/ClientSettings.hpp
 	${SOURCE_DIR}/client/Client.cpp
-	${SOURCE_DIR}/client/ClientSettingsParser.hpp
-	${SOURCE_DIR}/client/ClientSettingsParser.cpp
+	${SOURCE_DIR}/client/ClientSettings.cpp
 	${SOURCE_DIR}/client/ClientTransport.hpp
-	${SOURCE_DIR}/client/Connector.hpp
-	${SOURCE_DIR}/client/Connector.cpp
+	${SOURCE_DIR}/client/ClientTransportFactory.hpp
+	${SOURCE_DIR}/client/ClientTransportFactory.cpp
 	${SOURCE_DIR}/client/TcpClientTransport.hpp
 	${SOURCE_DIR}/client/TcpClientTransport.cpp
 )

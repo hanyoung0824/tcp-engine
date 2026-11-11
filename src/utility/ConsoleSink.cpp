@@ -1,4 +1,4 @@
-#include "tcpengine/utility/ConsoleLogger.hpp"
+#include "tcpengine/utility/ConsoleSink.hpp"
 
 #include <ctime>
 #include <iomanip>
@@ -41,12 +41,12 @@ namespace
 	}
 }
 
-ConsoleLogger::ConsoleLogger(std::string name)
+ConsoleSink::ConsoleSink(std::string name)
 	: m_name(std::move(name))
 {
 }
 
-void ConsoleLogger::write(const LogEntry& entry)
+void ConsoleSink::write(const LogEntry& entry)
 {
 	using namespace std::chrono;
 

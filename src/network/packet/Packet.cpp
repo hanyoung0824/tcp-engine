@@ -1,10 +1,10 @@
-#include "tcpengine/network/packet/IPacket.hpp"
+#include "tcpengine/network/packet/Packet.hpp"
 
 #include <optional>
 
 namespace tcpengine
 {
-std::shared_ptr<const PacketBuffer> IPacket::serialize() const
+std::shared_ptr<const PacketBuffer> PacketBase::serialize() const
 {
 	PacketWriter writer(getPacketId());
 	write(writer);

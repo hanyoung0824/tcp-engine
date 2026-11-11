@@ -10,8 +10,8 @@ using asio::ip::tcp;
 
 namespace tcpengine
 {
-TcpServerTransport::TcpServerTransport(unsigned short port, std::shared_ptr<const SessionConfig> config)
-	: m_sessionManager(std::move(config)),
+TcpServerTransport::TcpServerTransport(unsigned short port, std::shared_ptr<const ConnectionEventHandler> handler)
+	: m_connectionManager(std::move(handler)),
 	m_listener(m_ioContext, tcp::endpoint(tcp::v4(), port)),
 	m_signals(m_ioContext, SIGINT, SIGTERM)
 {
@@ -24,7 +24,7 @@ bool TcpServerTransport::start()
 	}
 
 	m_listener.start([this](tcp::socket socket) {
-		m_sessionManager.createSession(std::move(socket));
+		m_connectionManager.createConnection(std::move(socket));
 	});
 
 	m_signals.async_wait([this](const boost::system::error_code& ec, int signalNumber) {
@@ -50,7 +50,7 @@ void TcpServerTransport::stop()
 		boost::system::error_code ec;
 		m_signals.cancel(ec);
 		m_listener.close();
-		m_sessionManager.closeAll();
+		m_connectionManager.closeAll();
 	});
 }
 }

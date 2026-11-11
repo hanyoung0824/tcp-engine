@@ -1,7 +1,6 @@
 #pragma once
 
 #include <chrono>
-#include <memory>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -23,12 +22,6 @@ struct LogEntry
 	std::thread::id threadId;
 	std::string message;
 };
-
-class LogInterface;
-
-// 출력할 곳을 끼움. 끼우기 전의 로그는 저장만 해 두었다가 끼우면 그때 출력함
-// 표시할 레벨은 LogInterface::setLevel()로 정함
-void setLogger(std::shared_ptr<LogInterface> logger);
 
 namespace detail
 {

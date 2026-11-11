@@ -1,8 +1,9 @@
 #pragma once
 
-#include "SessionConfig.hpp"
-#include "tcpengine/network/HeartbeatSettings.hpp"
-#include "tcpengine/network/Session.hpp"
+#include "ConnectionEventHandler.hpp"
+#include "tcpengine/network/Connection.hpp"
+
+#include <boost/asio/any_io_executor.hpp>
 
 #include <memory>
 #include <string>
@@ -15,13 +16,13 @@ class ClientTransport
 public:
 	virtual ~ClientTransport() = default;
 
-	virtual bool connect(const std::string& host, unsigned short port, std::shared_ptr<const SessionConfig> config) = 0;
+	virtual bool connect(const std::string& host, unsigned short port, std::shared_ptr<const ConnectionEventHandler> handler) = 0;
 
-	// 서버가 알려 준 하트비트를 세션에 적용. 네트워크 스레드에서 호출
-	virtual void startHeartbeat(const HeartbeatSettings& heartbeat, std::shared_ptr<const Session::Buffer> pingData) = 0;
+	// 하트비트 타이머 등 네트워크 스레드에서 돌릴 작업용
+	virtual boost::asio::any_io_executor getExecutor() = 0;
 
 	// 어느 스레드에서 불러도 됨
-	virtual void send(std::shared_ptr<const Session::Buffer> data) = 0;
+	virtual void send(std::shared_ptr<const Connection::Buffer> data) = 0;
 
 	virtual void close() = 0;
 

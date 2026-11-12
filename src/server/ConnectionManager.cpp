@@ -1,6 +1,6 @@
 #include "ConnectionManager.hpp"
 
-#include "Logger.hpp"
+#include "EngineLog.hpp"
 
 #include <vector>
 

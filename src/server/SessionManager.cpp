@@ -1,6 +1,6 @@
 #include "SessionManager.hpp"
 
-#include "Logger.hpp"
+#include "EngineLog.hpp"
 #include "PacketManager.hpp"
 
 #include <cstdint>

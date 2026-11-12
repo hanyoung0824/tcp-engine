@@ -1,6 +1,7 @@
 #include "tcpengine/server/Server.hpp"
 
 #include "ConnectionEventHandler.hpp"
+#include "EngineLog.hpp"
 #include "HeartbeatMonitor.hpp"
 #include "Logger.hpp"
 #include "PacketManager.hpp"
@@ -63,12 +64,13 @@ std::shared_ptr<Session> Server::findSession(const std::shared_ptr<Connection>& 
 	return m_sessionManager ? m_sessionManager->find(*connection) : nullptr;
 }
 
-int Server::run(std::shared_ptr<LogSink> engineLogSink, std::shared_ptr<LogSink> appLogSink)
+int Server::run()
 {
-	installTerminateHandler();
+	Logger::installTerminateHandler();
 	const ScopedLogFlush logFlush;
-	setEngineLogSink(std::move(engineLogSink));
-	setAppLogSink(std::move(appLogSink));
+	if (!Logger::start(m_settings.log)) {
+		return 1;
+	}
 
 	// 멈춘 io_context에 남은 핸들러는 이미 사라진 객체를 가리킬 수 있어 다시 돌리지 않음
 	if (m_running) {

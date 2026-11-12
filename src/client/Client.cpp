@@ -2,6 +2,7 @@
 
 #include "ClientTransportFactory.hpp"
 #include "ConnectionEventHandler.hpp"
+#include "EngineLog.hpp"
 #include "HeartbeatMonitor.hpp"
 #include "Logger.hpp"
 #include "PacketManager.hpp"
@@ -47,12 +48,13 @@ bool Client::isConnected() const
 	return m_transport && m_transport->isConnected();
 }
 
-int Client::run(std::shared_ptr<LogSink> engineLogSink, std::shared_ptr<LogSink> appLogSink)
+int Client::run()
 {
-	installTerminateHandler();
+	Logger::installTerminateHandler();
 	const ScopedLogFlush logFlush;
-	setEngineLogSink(std::move(engineLogSink));
-	setAppLogSink(std::move(appLogSink));
+	if (!Logger::start(m_settings.log)) {
+		return 1;
+	}
 	return start();
 }
 

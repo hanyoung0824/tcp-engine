@@ -4,7 +4,6 @@
 #include "tcpengine/network/Connection.hpp"
 #include "tcpengine/client/ClientSettings.hpp"
 #include "tcpengine/utility/Log.hpp"
-#include "tcpengine/utility/LogSink.hpp"
 
 #include <cstdint>
 #include <memory>
@@ -27,8 +26,8 @@ public:
 	Client(const Client&) = delete;
 	Client& operator=(const Client&) = delete;
 
-	// 로거는 엔진 로그와 응용 로그를 각각 출력할 곳. 설정 검사도 여기서 하며 실패하면 로그를 남기고 1 반환
-	int run(std::shared_ptr<LogSink> engineLogSink, std::shared_ptr<LogSink> appLogSink);
+	// 설정의 log대로 로그 출력을 시작하고 실행함. 설정 검사도 여기서 하며 실패하면 이유를 남기고 1 반환
+	int run();
 
 protected:
 	// 설정 파일에서 읽으려면 ClientSettings::create() 또는 ClientSettings::fromJson()을 씀

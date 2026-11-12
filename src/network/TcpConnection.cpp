@@ -1,6 +1,6 @@
 #include "TcpConnection.hpp"
 
-#include "Logger.hpp"
+#include "EngineLog.hpp"
 
 #include <algorithm>
 #include <cstdint>

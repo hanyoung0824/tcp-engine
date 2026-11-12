@@ -5,7 +5,6 @@
 #include "tcpengine/server/ServerSettings.hpp"
 #include "tcpengine/server/Session.hpp"
 #include "tcpengine/utility/Log.hpp"
-#include "tcpengine/utility/LogSink.hpp"
 
 #include <atomic>
 #include <cstdint>
@@ -35,9 +34,9 @@ public:
 	Server(const Server&) = delete;
 	Server& operator=(const Server&) = delete;
 
-	// 로거는 엔진 로그와 응용 로그를 각각 출력할 곳. 설정 검사도 여기서 하며 실패하면 로그를 남기고 1 반환
+	// 설정의 log대로 로그 출력을 시작하고 실행함. 설정 검사도 여기서 하며 실패하면 이유를 남기고 1 반환
 	// 한 번만 호출할 수 있음
-	int run(std::shared_ptr<LogSink> engineLogSink, std::shared_ptr<LogSink> appLogSink);
+	int run();
 
 	// 어느 스레드에서 불러도 되고 여러 번 불러도 한 번만 처리함. SIGINT, SIGTERM도 이 함수를 거침
 	// 접속 받기 중단 → 세션 모두 끝냄(onSessionEnded) → 연결마다 남은 데이터를 보내고 닫음 → run() 반환

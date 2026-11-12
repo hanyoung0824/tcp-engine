@@ -24,13 +24,14 @@ void ClientSettings::validate() const
 	if (closeTimeout.count() < 0) {
 		throw std::invalid_argument("closeTimeout must not be negative");
 	}
+	log.validate();
 }
 
 ClientSettings ClientSettings::fromJson(const nlohmann::json& file)
 {
+	ClientSettings settings;
 	try {
 		const nlohmann::json& engine = file.at("engine");
-		ClientSettings settings;
 		const std::optional<TransportType> transport = parseTransportType(engine.at("transport").get<std::string>());
 		if (!transport) {
 			throw std::invalid_argument("transport must be one of: tcp");
@@ -46,13 +47,14 @@ ClientSettings ClientSettings::fromJson(const nlohmann::json& file)
 		}
 		settings.port = static_cast<unsigned short>(port);
 		settings.closeTimeout = std::chrono::seconds(engine.at("closeTimeout").get<std::int64_t>());
-
 		settings.validate();
-		return settings;
 	}
 	catch (const std::exception& e) {
 		throw std::runtime_error(std::string("invalid engine settings: ") + e.what());
 	}
+
+	settings.log = LogSettings::fromJson(file);
+	return settings;
 }
 
 ClientSettings ClientSettings::create(const std::filesystem::path& path)

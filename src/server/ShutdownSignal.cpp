@@ -1,6 +1,6 @@
 #include "ShutdownSignal.hpp"
 
-#include "Logger.hpp"
+#include "EngineLog.hpp"
 
 #include <csignal>
 

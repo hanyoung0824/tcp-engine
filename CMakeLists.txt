@@ -50,14 +50,14 @@ endfunction()
 
 # utility
 tcp_engine_add_layer(tcp_engine_utility utility
-	${INCLUDE_DIR}/utility/ConsoleSink.hpp
 	${INCLUDE_DIR}/utility/JsonConfig.hpp
 	${INCLUDE_DIR}/utility/Log.hpp
-	${INCLUDE_DIR}/utility/LogSink.hpp
-	${SOURCE_DIR}/utility/ConsoleSink.cpp
+	${INCLUDE_DIR}/utility/LogSettings.hpp
 	${SOURCE_DIR}/utility/JsonConfig.cpp
+	${SOURCE_DIR}/utility/EngineLog.hpp
 	${SOURCE_DIR}/utility/Logger.hpp
 	${SOURCE_DIR}/utility/Logger.cpp
+	${SOURCE_DIR}/utility/LogSettings.cpp
 )
 add_library(tcp::utility ALIAS tcp_engine_utility)
 # spdlog는 로거 구현에만 쓰고 공개 헤더에는 드러내지 않음

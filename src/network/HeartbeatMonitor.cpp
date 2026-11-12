@@ -1,6 +1,6 @@
 #include "HeartbeatMonitor.hpp"
 
-#include "Logger.hpp"
+#include "EngineLog.hpp"
 
 #include <utility>
 

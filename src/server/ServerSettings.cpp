@@ -41,13 +41,14 @@ void ServerSettings::validate() const
 	}
 	heartbeat.validate();
 	session.validate();
+	log.validate();
 }
 
 ServerSettings ServerSettings::fromJson(const nlohmann::json& file)
 {
+	ServerSettings settings;
 	try {
 		const nlohmann::json& engine = file.at("engine");
-		ServerSettings settings;
 		const std::optional<TransportType> transport = parseTransportType(engine.at("transport").get<std::string>());
 		if (!transport) {
 			throw std::invalid_argument("transport must be one of: tcp");
@@ -64,13 +65,14 @@ ServerSettings ServerSettings::fromJson(const nlohmann::json& file)
 		settings.heartbeat = readHeartbeat(engine.at("heartbeat"));
 		settings.session.resumeTimeout = std::chrono::seconds(engine.at("session").at("resumeTimeout").get<std::int64_t>());
 		settings.closeTimeout = std::chrono::seconds(engine.at("closeTimeout").get<std::int64_t>());
-
 		settings.validate();
-		return settings;
 	}
 	catch (const std::exception& e) {
 		throw std::runtime_error(std::string("invalid engine settings: ") + e.what());
 	}
+
+	settings.log = LogSettings::fromJson(file);
+	return settings;
 }
 
 ServerSettings ServerSettings::create(const std::filesystem::path& path)

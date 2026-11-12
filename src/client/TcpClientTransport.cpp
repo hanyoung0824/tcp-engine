@@ -1,6 +1,6 @@
 #include "TcpClientTransport.hpp"
 
-#include "Logger.hpp"
+#include "EngineLog.hpp"
 
 namespace asio = boost::asio;
 using asio::ip::tcp;

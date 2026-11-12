@@ -1,6 +1,6 @@
 #include "PacketManager.hpp"
 
-#include "Logger.hpp"
+#include "EngineLog.hpp"
 #include "tcpengine/network/packet/PacketWriter.hpp"
 
 #include <chrono>

@@ -3,6 +3,9 @@
 #include "Logger.hpp"
 
 #include <algorithm>
+#include <cstdint>
+#include <optional>
+#include <span>
 #include <sstream>
 #include <thread>
 

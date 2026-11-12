@@ -7,12 +7,9 @@
 
 #include <atomic>
 #include <chrono>
-#include <cstdint>
 #include <deque>
 #include <functional>
 #include <memory>
-#include <optional>
-#include <span>
 #include <string>
 
 namespace tcpengine

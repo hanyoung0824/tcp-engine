@@ -3,6 +3,7 @@ project(tcp_engine LANGUAGES CXX)
 
 find_package(boost_asio CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
+find_package(spdlog CONFIG REQUIRED)
 find_package(Threads REQUIRED)
 
 # 층 구조: utility, packet ← network ← server, client
@@ -59,7 +60,11 @@ tcp_engine_add_layer(tcp_engine_utility utility
 	${SOURCE_DIR}/utility/Logger.cpp
 )
 add_library(tcp::utility ALIAS tcp_engine_utility)
-target_link_libraries(tcp_engine_utility PUBLIC nlohmann_json::nlohmann_json Threads::Threads)
+# spdlog는 로거 구현에만 쓰고 공개 헤더에는 드러내지 않음
+target_link_libraries(tcp_engine_utility
+	PUBLIC nlohmann_json::nlohmann_json Threads::Threads
+	PRIVATE spdlog::spdlog
+)
 tcp_engine_add_internal_headers(tcp_engine_utility_internal utility)
 
 # packet (응용 protocol이 연결 등을 몰라도 되도록 network와 별도 타깃)

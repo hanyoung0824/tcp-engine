@@ -1,9 +1,9 @@
 #pragma once
 
 #include <chrono>
+#include <cstddef>
 #include <sstream>
 #include <string>
-#include <thread>
 
 namespace tcpengine
 {
@@ -19,7 +19,8 @@ struct LogEntry
 {
 	std::chrono::system_clock::time_point time;
 	LogLevel level;
-	std::thread::id threadId;
+	// OS가 매긴 스레드 번호
+	std::size_t threadId;
 	std::string message;
 };
 

@@ -1,205 +1,205 @@
 #include "Logger.hpp"
 
+#include <spdlog/async.h>
+#include <spdlog/async_logger.h>
+#include <spdlog/sinks/base_sink.h>
+
+#include <array>
+#include <atomic>
+#include <condition_variable>
+#include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <exception>
-#include <iterator>
+#include <mutex>
 #include <utility>
 
 namespace tcpengine
 {
 namespace
 {
-	void deliver(LogSink& output, const LogEntry& entry)
+	constexpr std::size_t sourceCount = 2;
+	constexpr std::size_t queueSize = 8192;
+
+	spdlog::level::level_enum toSpdlogLevel(LogLevel level)
 	{
-		// 출력 오류로 로그 스레드가 끝나지 않도록 함
-		try {
-			output.output(entry);
+		switch (level) {
+		case LogLevel::Debug: return spdlog::level::debug;
+		case LogLevel::Info: return spdlog::level::info;
+		case LogLevel::Warning: return spdlog::level::warn;
+		case LogLevel::Error: return spdlog::level::err;
 		}
-		catch (const std::exception&) {
-		}
+		return spdlog::level::err;
 	}
-}
 
-Logger::~Logger()
-{
-	shutdown();
-}
-
-void Logger::setOutput(LogSource source, std::shared_ptr<LogSink> output)
-{
+	LogLevel fromSpdlogLevel(spdlog::level::level_enum level)
 	{
-		std::lock_guard lock(m_mutex);
-		const bool hasOutput = output != nullptr;
-		m_outputs[static_cast<std::size_t>(source)].store(std::move(output));
-		if (!hasOutput) {
-			return;
-		}
-
-		// 보관해 둔 로그를 큐 맨 앞에 넣어 먼저 출력되게 함
-		std::vector<Item>& held = heldOf(source);
-		m_pending.insert(m_pending.begin(), std::make_move_iterator(held.begin()), std::make_move_iterator(held.end()));
-		held.clear();
-
-		if (!m_shutDown && !m_thread.joinable()) {
-			m_thread = std::thread([this] { runLoop(); });
+		switch (level) {
+		case spdlog::level::trace:
+		case spdlog::level::debug: return LogLevel::Debug;
+		case spdlog::level::info: return LogLevel::Info;
+		case spdlog::level::warn: return LogLevel::Warning;
+		default: return LogLevel::Error;
 		}
 	}
-	m_wakeUp.notify_one();
-}
 
-bool Logger::isEnabled(LogSource source, LogLevel level) const
-{
-	const std::shared_ptr<LogSink> output = outputOf(source);
-	return !output || level >= output->getLevel();
-}
-
-void Logger::write(LogSource source, LogLevel level, std::string message)
-{
-	Item item{ source, LogEntry{ std::chrono::system_clock::now(), level, std::this_thread::get_id(), std::move(message) } };
-
-	std::lock_guard lock(m_mutex);
-	if (m_shutDown) {
-		if (const std::shared_ptr<LogSink>& output = outputOf(source)) {
-			deliver(*output, item.entry);
-		}
-		return;
-	}
-
-	if (!m_thread.joinable()) {
-		deliverOrHold(std::move(item));
-		return;
-	}
-	m_pending.push_back(std::move(item));
-	m_wakeUp.notify_one();
-}
-
-void Logger::flush()
-{
-	std::unique_lock lock(m_mutex);
-	m_drained.wait(lock, [this] { return !m_thread.joinable() || m_shutDown || (m_pending.empty() && !m_delivering); });
-}
-
-void Logger::writeAndFlushBeforeAbort(LogSource source, std::string message, std::chrono::milliseconds timeout)
-{
-	const auto deadline = std::chrono::steady_clock::now() + timeout;
-	Item item{ source, LogEntry{ std::chrono::system_clock::now(), LogLevel::Error, std::this_thread::get_id(), std::move(message) } };
-
-	std::unique_lock lock(m_mutex, std::defer_lock);
-	while (!lock.try_lock()) {
-		if (std::chrono::steady_clock::now() >= deadline) {
-			return;
-		}
-		std::this_thread::sleep_for(std::chrono::milliseconds(1));
-	}
-
-	// 로그 스레드가 없거나 로그 스레드 자신이 죽는 중이면 기다려도 출력되지 않으므로 직접 출력
-	if (m_shutDown || !m_thread.joinable() || m_thread.get_id() == std::this_thread::get_id()) {
-		if (const std::shared_ptr<LogSink>& output = outputOf(source)) {
-			deliver(*output, item.entry);
-		}
-		return;
-	}
-
-	m_pending.push_back(std::move(item));
-	m_wakeUp.notify_one();
-	m_drained.wait_until(lock, deadline, [this] { return m_pending.empty() && !m_delivering; });
-}
-
-void Logger::shutdown()
-{
+	// spdlog의 비동기 flush는 요청만 넣고 바로 돌아오므로, 로그 스레드가 flush에 닿았는지 직접 셈
+	class FlushTracker
 	{
-		std::lock_guard lock(m_mutex);
-		if (m_shutDown) {
-			return;
-		}
-		m_shutDown = true;
-		m_stopping = true;
-	}
-	m_wakeUp.notify_one();
-	m_drained.notify_all();
-	if (m_thread.joinable()) {
-		m_thread.join();
-	}
-
-	// 출력할 곳이 없어 남은 로그는 버림
-	std::lock_guard lock(m_mutex);
-	m_pending.clear();
-	for (std::vector<Item>& held : m_held) {
-		held.clear();
-	}
-}
-
-void Logger::runLoop()
-{
-	std::vector<Item> items;
-	while (true) {
-		std::array<std::shared_ptr<LogSink>, sourceCount> outputs;
-		{
-			std::unique_lock lock(m_mutex);
-			m_wakeUp.wait(lock, [this] { return !m_pending.empty() || m_stopping; });
-			items.swap(m_pending);
-			if (items.empty() && m_stopping) {
-				return;
-			}
-			for (std::size_t i = 0; i < sourceCount; ++i) {
-				outputs[i] = m_outputs[i].load();
-			}
-			m_delivering = true;
-		}
-
-		// 출력할 곳이 없는 출처의 로그는 다시 보관함
-		std::vector<Item> unassigned;
-		for (Item& item : items) {
-			if (const std::shared_ptr<LogSink>& output = outputs[static_cast<std::size_t>(item.source)]) {
-				deliver(*output, item.entry);
-			}
-			else {
-				unassigned.push_back(std::move(item));
-			}
-		}
-		items.clear();
-
+	public:
+		std::uint64_t request()
 		{
 			std::lock_guard lock(m_mutex);
-			for (Item& item : unassigned) {
-				deliverOrHold(std::move(item));
-			}
-			m_delivering = false;
+			return ++m_requested;
 		}
-		m_drained.notify_all();
+
+		void complete()
+		{
+			{
+				std::lock_guard lock(m_mutex);
+				++m_completed;
+			}
+			m_completedChanged.notify_all();
+		}
+
+		bool wait(std::uint64_t ticket, std::optional<std::chrono::milliseconds> timeout)
+		{
+			std::unique_lock lock(m_mutex);
+			const auto done = [this, ticket] { return m_completed >= ticket; };
+			if (!timeout) {
+				m_completedChanged.wait(lock, done);
+				return true;
+			}
+			return m_completedChanged.wait_for(lock, *timeout, done);
+		}
+
+	private:
+		std::mutex m_mutex;
+		std::condition_variable m_completedChanged;
+		std::uint64_t m_requested = 0;
+		std::uint64_t m_completed = 0;
+	};
+
+	// spdlog 로그를 응용이 넘긴 LogSink로 넘김. 로그 스레드에서만 불림
+	class LogSinkAdapter final : public spdlog::sinks::base_sink<std::mutex>
+	{
+	public:
+		explicit LogSinkAdapter(FlushTracker& flushTracker)
+			: m_flushTracker(flushTracker)
+		{
+		}
+
+		void setTarget(std::shared_ptr<LogSink> target)
+		{
+			std::lock_guard lock(mutex_);
+			m_target = std::move(target);
+		}
+
+	protected:
+		void sink_it_(const spdlog::details::log_msg& message) override
+		{
+			if (m_target) {
+				m_target->output(LogEntry{ message.time, fromSpdlogLevel(message.level), message.thread_id,
+					std::string(message.payload.data(), message.payload.size()) });
+			}
+		}
+
+		void flush_() override
+		{
+			m_flushTracker.complete();
+		}
+
+	private:
+		FlushTracker& m_flushTracker;
+		std::shared_ptr<LogSink> m_target;
+	};
+
+	// 소멸할 때 thread_pool이 큐에 남은 로그를 모두 출력하고 로그 스레드를 끝냄
+	class LogSystem
+	{
+	public:
+		LogSystem()
+			: m_threadPool(std::make_shared<spdlog::details::thread_pool>(queueSize, 1))
+		{
+			constexpr std::array<const char*, sourceCount> names{ "engine", "app" };
+			for (std::size_t i = 0; i < sourceCount; ++i) {
+				m_adapters[i] = std::make_shared<LogSinkAdapter>(m_flushTracker);
+				// 큐가 차면 버리지 않고 기다림. 레벨은 isLogEnabled()와 LogSink가 거르므로 spdlog는 모두 통과
+				m_loggers[i] = std::make_shared<spdlog::async_logger>(names[i], m_adapters[i], m_threadPool,
+					spdlog::async_overflow_policy::block);
+				m_loggers[i]->set_level(spdlog::level::trace);
+			}
+		}
+
+		void setSink(LogSource source, std::shared_ptr<LogSink> sink)
+		{
+			const std::size_t index = static_cast<std::size_t>(source);
+			m_adapters[index]->setTarget(sink);
+			m_sinks[index].store(std::move(sink));
+		}
+
+		bool isEnabled(LogSource source, LogLevel level) const
+		{
+			const std::shared_ptr<LogSink> sink = m_sinks[static_cast<std::size_t>(source)].load();
+			return sink && level >= sink->getLevel();
+		}
+
+		void write(LogSource source, LogLevel level, const std::string& message)
+		{
+			m_loggers[static_cast<std::size_t>(source)]->log(toSpdlogLevel(level), spdlog::string_view_t(message));
+		}
+
+		// 큐 하나를 함께 쓰므로 엔진 로거의 flush가 처리됐으면 그 전의 응용 로그도 모두 출력된 것
+		bool flush(std::optional<std::chrono::milliseconds> timeout)
+		{
+			const std::uint64_t ticket = m_flushTracker.request();
+			m_loggers[static_cast<std::size_t>(LogSource::Engine)]->flush();
+			return m_flushTracker.wait(ticket, timeout);
+		}
+
+	private:
+		FlushTracker m_flushTracker;
+		std::shared_ptr<spdlog::details::thread_pool> m_threadPool;
+		std::array<std::shared_ptr<LogSinkAdapter>, sourceCount> m_adapters;
+		std::array<std::shared_ptr<spdlog::async_logger>, sourceCount> m_loggers;
+		std::array<std::atomic<std::shared_ptr<LogSink>>, sourceCount> m_sinks;
+	};
+
+	LogSystem& logSystem()
+	{
+		static LogSystem system;
+		return system;
 	}
 }
 
-void Logger::deliverOrHold(Item item)
+void setLogSink(LogSource source, std::shared_ptr<LogSink> sink)
 {
-	if (const std::shared_ptr<LogSink>& output = outputOf(item.source); output && m_thread.joinable()) {
-		// 스레드가 꺼낸 뒤에 출력할 곳이 생긴 경우. 순서를 지키도록 큐로 돌려보냄
-		m_pending.push_back(std::move(item));
-		m_wakeUp.notify_one();
-		return;
-	}
-
-	std::vector<Item>& held = heldOf(item.source);
-	if (held.size() >= maxHeldEntries) {
-		held.erase(held.begin());
-	}
-	held.push_back(std::move(item));
-}
-
-Logger& getLogger()
-{
-	static Logger logger;
-	return logger;
+	logSystem().setSink(source, std::move(sink));
 }
 
 void setEngineLogSink(std::shared_ptr<LogSink> sink)
 {
-	getLogger().setOutput(LogSource::Engine, std::move(sink));
+	setLogSink(LogSource::Engine, std::move(sink));
 }
 
 void setAppLogSink(std::shared_ptr<LogSink> sink)
 {
-	getLogger().setOutput(LogSource::App, std::move(sink));
+	setLogSink(LogSource::App, std::move(sink));
+}
+
+bool isLogEnabled(LogSource source, LogLevel level)
+{
+	return logSystem().isEnabled(source, level);
+}
+
+void writeLog(LogSource source, LogLevel level, std::string message)
+{
+	logSystem().write(source, level, message);
+}
+
+bool flushLogs(std::optional<std::chrono::milliseconds> timeout)
+{
+	return logSystem().flush(timeout);
 }
 
 void installTerminateHandler()
@@ -219,7 +219,9 @@ void installTerminateHandler()
 					message = "Uncaught unknown exception";
 				}
 			}
-			getLogger().writeAndFlushBeforeAbort(LogSource::Engine, std::move(message), std::chrono::seconds(2));
+			writeLog(LogSource::Engine, LogLevel::Error, std::move(message));
+			// 로그 스레드 자신이 죽는 중이면 flush가 끝나지 않으므로 시간을 제한함
+			flushLogs(std::chrono::seconds(2));
 		}
 		catch (...) {
 		}
@@ -229,19 +231,19 @@ void installTerminateHandler()
 
 ScopedLogFlush::~ScopedLogFlush()
 {
-	getLogger().flush();
+	flushLogs();
 }
 
 namespace detail
 {
 	bool isLogEnabled(LogLevel level)
 	{
-		return getLogger().isEnabled(LogSource::App, level);
+		return tcpengine::isLogEnabled(LogSource::App, level);
 	}
 
 	void writeLog(LogLevel level, std::string message)
 	{
-		getLogger().write(LogSource::App, level, std::move(message));
+		tcpengine::writeLog(LogSource::App, level, std::move(message));
 	}
 }
 }

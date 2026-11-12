@@ -7,9 +7,9 @@ using asio::ip::tcp;
 
 namespace tcpengine
 {
-TcpServerTransport::TcpServerTransport(asio::any_io_executor executor, unsigned short port, std::chrono::seconds closeTimeout,
+TcpServerTransport::TcpServerTransport(asio::any_io_executor executor, unsigned short port, ConnectionOptions connectionOptions,
 	std::shared_ptr<const ConnectionEventHandler> handler)
-	: m_connectionManager(std::move(handler), closeTimeout),
+	: m_connectionManager(std::move(handler), connectionOptions),
 	m_listener(std::move(executor), tcp::endpoint(tcp::v4(), port))
 {
 }

@@ -9,7 +9,8 @@ std::unique_ptr<ServerTransport> makeServerTransport(boost::asio::any_io_executo
 {
 	switch (settings.transport) {
 	case TransportType::Tcp:
-		return std::make_unique<TcpServerTransport>(std::move(executor), settings.port, settings.closeTimeout, std::move(handler));
+		return std::make_unique<TcpServerTransport>(std::move(executor), settings.port,
+			ConnectionOptions{ settings.closeTimeout, settings.sendQueueLimit }, std::move(handler));
 	}
 	return nullptr;
 }

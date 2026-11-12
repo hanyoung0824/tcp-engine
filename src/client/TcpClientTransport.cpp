@@ -7,8 +7,8 @@ using asio::ip::tcp;
 
 namespace tcpengine
 {
-TcpClientTransport::TcpClientTransport(std::chrono::seconds closeTimeout)
-	: m_closeTimeout(closeTimeout)
+TcpClientTransport::TcpClientTransport(ConnectionOptions connectionOptions)
+	: m_connectionOptions(connectionOptions)
 {
 }
 
@@ -40,7 +40,7 @@ bool TcpClientTransport::connect(const std::string& host, unsigned short port, s
 	}
 
 	// onConnected도 네트워크 스레드에서 호출되도록 start()를 넘김
-	m_connection = std::make_shared<TcpConnection>(std::move(socket), std::move(handler), 0, m_closeTimeout);
+	m_connection = std::make_shared<TcpConnection>(std::move(socket), std::move(handler), 0, m_connectionOptions);
 	asio::post(m_ioContext, [connection = m_connection] { connection->start(); });
 	m_networkThread = std::thread([this] { m_ioContext.run(); });
 	return true;

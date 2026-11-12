@@ -1,11 +1,11 @@
 #pragma once
 
 #include "ConnectionEventHandler.hpp"
+#include "ConnectionOptions.hpp"
 #include "TcpConnection.hpp"
 
 #include <boost/asio.hpp>
 
-#include <chrono>
 #include <functional>
 #include <memory>
 #include <unordered_map>
@@ -15,7 +15,7 @@ namespace tcpengine
 class ConnectionManager
 {
 public:
-	ConnectionManager(std::shared_ptr<const ConnectionEventHandler> handler, std::chrono::seconds closeTimeout);
+	ConnectionManager(std::shared_ptr<const ConnectionEventHandler> handler, ConnectionOptions options);
 
 	ConnectionManager(const ConnectionManager&) = delete;
 	ConnectionManager& operator=(const ConnectionManager&) = delete;
@@ -32,7 +32,7 @@ private:
 
 private:
 	const std::shared_ptr<const ConnectionEventHandler> m_handler;
-	const std::chrono::seconds m_closeTimeout;
+	const ConnectionOptions m_options;
 	bool m_closingAll = false;
 	std::function<void()> m_onAllClosed;
 	std::unordered_map<Connection::ConnectionId, std::shared_ptr<TcpConnection>> m_connections;

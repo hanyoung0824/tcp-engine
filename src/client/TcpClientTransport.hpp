@@ -2,11 +2,11 @@
 
 #include "ClientTransport.hpp"
 #include "ConnectionEventHandler.hpp"
+#include "ConnectionOptions.hpp"
 #include "TcpConnection.hpp"
 
 #include <boost/asio.hpp>
 
-#include <chrono>
 #include <memory>
 #include <string>
 #include <thread>
@@ -16,7 +16,7 @@ namespace tcpengine
 class TcpClientTransport final : public ClientTransport
 {
 public:
-	explicit TcpClientTransport(std::chrono::seconds closeTimeout);
+	explicit TcpClientTransport(ConnectionOptions connectionOptions);
 
 	~TcpClientTransport() override;
 
@@ -35,7 +35,7 @@ public:
 
 private:
 	boost::asio::io_context m_ioContext;
-	const std::chrono::seconds m_closeTimeout;
+	const ConnectionOptions m_connectionOptions;
 	std::shared_ptr<TcpConnection> m_connection;
 	std::thread m_networkThread;
 };

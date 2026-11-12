@@ -88,6 +88,7 @@ tcp_engine_add_layer(tcp_engine_network network
 	${SOURCE_DIR}/network/PacketManager.hpp
 	${SOURCE_DIR}/network/PacketManager.cpp
 	${SOURCE_DIR}/network/ConnectionEventHandler.hpp
+	${SOURCE_DIR}/network/ConnectionOptions.hpp
 	${SOURCE_DIR}/network/HeartbeatMonitor.hpp
 	${SOURCE_DIR}/network/HeartbeatMonitor.cpp
 	${SOURCE_DIR}/network/TcpConnection.hpp

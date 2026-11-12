@@ -5,6 +5,7 @@
 #include <nlohmann/json.hpp>
 
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <exception>
 #include <optional>
@@ -39,6 +40,9 @@ void ServerSettings::validate() const
 	if (closeTimeout.count() < 0) {
 		throw std::invalid_argument("closeTimeout must not be negative");
 	}
+	if (sendQueueLimit == 0) {
+		throw std::invalid_argument("sendQueueLimitKB must be positive");
+	}
 	heartbeat.validate();
 	session.validate();
 	log.validate();
@@ -65,6 +69,14 @@ ServerSettings ServerSettings::fromJson(const nlohmann::json& file)
 		settings.heartbeat = readHeartbeat(engine.at("heartbeat"));
 		settings.session.resumeTimeout = std::chrono::seconds(engine.at("session").at("resumeTimeout").get<std::int64_t>());
 		settings.closeTimeout = std::chrono::seconds(engine.at("closeTimeout").get<std::int64_t>());
+
+		// size_t로 바로 받으면 음수가 에러 없이 큰 값으로 바뀌므로 int64로 받아 검사
+		const std::int64_t sendQueueLimitKB = engine.at("sendQueueLimitKB").get<std::int64_t>();
+		if (sendQueueLimitKB <= 0) {
+			throw std::invalid_argument("sendQueueLimitKB must be positive");
+		}
+		settings.sendQueueLimit = static_cast<std::size_t>(sendQueueLimitKB) * 1024;
+
 		settings.validate();
 	}
 	catch (const std::exception& e) {

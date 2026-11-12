@@ -19,11 +19,11 @@ namespace
 }
 
 TcpConnection::TcpConnection(tcp::socket socket, std::shared_ptr<const ConnectionEventHandler> handler,
-	ConnectionId id, std::chrono::seconds closeTimeout, CloseCallback onClosed)
+	ConnectionId id, ConnectionOptions options, CloseCallback onClosed)
 	: m_socket(std::move(socket)),
 	m_handler(std::move(handler)),
 	m_id(id),
-	m_closeTimeout(closeTimeout),
+	m_options(options),
 	m_closeTimer(m_socket.get_executor()),
 	m_onClosed(std::move(onClosed)),
 	m_receiveBuffer(receiveBufferSize)
@@ -59,7 +59,16 @@ void TcpConnection::send(std::shared_ptr<const Buffer> data)
 		return;
 	}
 
+	if (m_options.sendQueueLimit && m_queuedBytes + data->size() > *m_options.sendQueueLimit) {
+		engineLogWarning("Send queue over ", *m_options.sendQueueLimit / 1024, "KB for ", m_address, ", closing");
+		// 브로드캐스트처럼 연결 목록을 도는 중에 불릴 수 있어, 그 목록을 바꾸는 onDisconnected는 나중에 부름
+		m_closed = true;
+		asio::post(m_socket.get_executor(), [self = shared_from_this()] { self->reset(); });
+		return;
+	}
+
 	const bool writing = !m_writeQueue.empty();
+	m_queuedBytes += data->size();
 	m_writeQueue.push_back(std::move(data));
 
 	if (!writing) {
@@ -73,18 +82,18 @@ void TcpConnection::close()
 		return;
 	}
 
-	if (m_closeTimeout.count() == 0) {
+	if (m_options.closeTimeout.count() == 0) {
 		abort();
 		return;
 	}
 
-	m_closeTimer.expires_after(m_closeTimeout);
+	m_closeTimer.expires_after(m_options.closeTimeout);
 	m_closeTimer.async_wait([self = shared_from_this()](const boost::system::error_code& ec) {
 		if (ec || self->m_finished) {
 			return;
 		}
-		engineLogWarning("Close timed out for ", self->m_address, ", aborting");
-		self->abort();
+		engineLogWarning("Close timed out for ", self->m_address, ", resetting");
+		self->reset();
 	});
 
 	if (m_writeQueue.empty()) {
@@ -94,6 +103,16 @@ void TcpConnection::close()
 
 void TcpConnection::abort()
 {
+	finish(false);
+}
+
+void TcpConnection::reset()
+{
+	finish(true);
+}
+
+void TcpConnection::finish(bool sendReset)
+{
 	if (m_finished) {
 		return;
 	}
@@ -102,7 +121,13 @@ void TcpConnection::abort()
 	m_closeTimer.cancel();
 
 	boost::system::error_code ec;
-	m_socket.shutdown(tcp::socket::shutdown_both, ec);
+	if (sendReset) {
+		// linger 0으로 닫으면 커널 송신 버퍼에 남은 데이터를 버리고 RST를 보냄. 받지 않는 상대에게 버퍼를 묶어 두지 않음
+		m_socket.set_option(tcp::socket::linger(true, 0), ec);
+	}
+	else {
+		m_socket.shutdown(tcp::socket::shutdown_both, ec);
+	}
 	m_socket.close(ec);
 
 	if (m_handler->onDisconnected) {
@@ -215,6 +240,7 @@ void TcpConnection::onWrite(const boost::system::error_code& ec, std::size_t)
 		return;
 	}
 
+	m_queuedBytes -= m_writeQueue.front()->size();
 	m_writeQueue.pop_front();
 	if (!m_writeQueue.empty()) {
 		startWrite();

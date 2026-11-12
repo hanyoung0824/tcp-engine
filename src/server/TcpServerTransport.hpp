@@ -4,10 +4,10 @@
 #include "ServerTransport.hpp"
 #include "ConnectionEventHandler.hpp"
 #include "ConnectionManager.hpp"
+#include "ConnectionOptions.hpp"
 
 #include <boost/asio.hpp>
 
-#include <chrono>
 #include <functional>
 #include <memory>
 
@@ -16,7 +16,7 @@ namespace tcpengine
 class TcpServerTransport final : public ServerTransport
 {
 public:
-	TcpServerTransport(boost::asio::any_io_executor executor, unsigned short port, std::chrono::seconds closeTimeout,
+	TcpServerTransport(boost::asio::any_io_executor executor, unsigned short port, ConnectionOptions connectionOptions,
 		std::shared_ptr<const ConnectionEventHandler> handler);
 
 	TcpServerTransport(const TcpServerTransport&) = delete;

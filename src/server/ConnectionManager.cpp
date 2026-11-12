@@ -6,9 +6,9 @@
 
 namespace tcpengine
 {
-ConnectionManager::ConnectionManager(std::shared_ptr<const ConnectionEventHandler> handler, std::chrono::seconds closeTimeout)
+ConnectionManager::ConnectionManager(std::shared_ptr<const ConnectionEventHandler> handler, ConnectionOptions options)
 	: m_handler(std::move(handler)),
-	m_closeTimeout(closeTimeout)
+	m_options(options)
 {
 }
 
@@ -26,7 +26,7 @@ void ConnectionManager::createConnection(boost::asio::ip::tcp::socket socket)
 	}
 
 	const Connection::ConnectionId id = m_nextId++;
-	auto connection = std::make_shared<TcpConnection>(std::move(socket), m_handler, id, m_closeTimeout,
+	auto connection = std::make_shared<TcpConnection>(std::move(socket), m_handler, id, m_options,
 		[this](Connection::ConnectionId closedId) { removeConnection(closedId); });
 
 	m_connections.emplace(id, connection);

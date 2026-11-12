@@ -32,7 +32,7 @@ namespace
 	// Warning 이상은 바로 쓰고 나머지는 모아서 씀
 	constexpr std::chrono::seconds periodicFlushInterval{ 3 };
 
-	constexpr const char* consolePattern = "[%H:%M:%S.%e][%^%l%$][%n] %v";
+	constexpr const char* consolePattern = "[%H:%M:%S.%e][%^%l%$][%n][thread %t] %v";
 	constexpr const char* filePattern = "[%Y-%m-%d %H:%M:%S.%e][%l][%n][thread %t] %v";
 
 	constexpr std::size_t sourceCount = static_cast<std::size_t>(LogSource::MaxCount);

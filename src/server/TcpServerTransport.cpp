@@ -2,8 +2,6 @@
 
 #include "EngineLog.hpp"
 
-#include <thread>
-
 namespace asio = boost::asio;
 using asio::ip::tcp;
 
@@ -26,7 +24,7 @@ bool TcpServerTransport::start()
 		m_connectionManager.createConnection(std::move(socket));
 	});
 
-	engineLogInfo("[thread ", std::this_thread::get_id(), "] Server listening on ", m_listener.getEndPoint());
+	engineLogInfo("Server listening on ", m_listener.getEndPoint());
 	return true;
 }
 

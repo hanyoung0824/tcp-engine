@@ -7,7 +7,6 @@
 #include <optional>
 #include <span>
 #include <sstream>
-#include <thread>
 
 namespace asio = boost::asio;
 using asio::ip::tcp;
@@ -42,7 +41,7 @@ TcpConnection::~TcpConnection()
 
 void TcpConnection::start()
 {
-	engineLogInfo("[thread ", std::this_thread::get_id(), "] Connected: ", m_address);
+	engineLogInfo("Connected: ", m_address);
 
 	if (m_handler->onConnected) {
 		m_handler->onConnected(shared_from_this());

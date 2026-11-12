@@ -9,6 +9,13 @@
 
 namespace tcpengine
 {
+enum class SessionEndReason
+{
+	Closed,         // 응용이 Session::close()를 부름 (로그아웃, 강퇴)
+	Expired,        // 끊긴 뒤 resumeTimeout 안에 재접속하지 않음 (0이면 끊기는 즉시)
+	ServerStopped,  // 서버 종료
+};
+
 // 로그인한 사용자 단위. 응용이 Server::startSession()으로 시작함
 // 연결이 끊겨도 resumeTimeout 동안 유지되고, 그 안에 재접속하면 새 연결이 붙음
 // 모든 함수는 네트워크 스레드에서만 호출

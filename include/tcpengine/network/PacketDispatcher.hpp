@@ -10,7 +10,7 @@
 
 namespace tcpengine::detail
 {
-// 본문을 읽어 핸들러를 호출. 본문이 잘못되면 false
+// 본문을 읽고 검사를 통과하면 핸들러를 호출. 형식이나 값이 잘못되면 false
 // Target은 핸들러가 받는 대상 (Connection 또는 서버의 Session)
 template <typename Target>
 using TargetDispatcher = std::function<bool(const std::shared_ptr<Target>& target, PacketReader& body)>;
@@ -26,7 +26,7 @@ TargetDispatcher<Target> makePacketDispatcher(Handler handler)
 
 	return [handler = std::move(handler)](const std::shared_ptr<Target>& target, PacketReader& body) mutable {
 		T packet;
-		if (!packet.read(body) || !body.isEnd()) {
+		if (!packet.read(body) || !body.isEnd() || !packet.validate()) {
 			return false;
 		}
 		handler(target, packet);

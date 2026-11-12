@@ -7,7 +7,7 @@
 namespace tcpengine
 {
 // 로그를 내보낼 곳. 콘솔 외에 파일, 윈도우, DB 등은 상속해서 write()를 구현
-// 로그는 모두 쌓이고, 여기서 정한 레벨 이상만 write()로 넘어옴
+// 여기서 정한 레벨 미만은 로그를 만들기 전에 걸러지고, 그 이상만 write()로 넘어옴
 class LogSink
 {
 public:

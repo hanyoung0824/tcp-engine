@@ -44,7 +44,7 @@ public:
 	void close() override
 	{
 		if (m_owner) {
-			m_owner->end(*this);
+			m_owner->end(*this, SessionEndReason::Closed);
 		}
 	}
 
@@ -148,7 +148,7 @@ void SessionManager::onConnectionClosed(const Connection& connection)
 	session->m_connection.reset();
 
 	if (m_resumeTimeout.count() == 0) {
-		end(*session);
+		end(*session, SessionEndReason::Expired);
 		return;
 	}
 
@@ -160,7 +160,7 @@ void SessionManager::onConnectionClosed(const Connection& connection)
 			return;
 		}
 		engineLogInfo("Session ", expired->m_id, " expired");
-		end(*expired);
+		end(*expired, SessionEndReason::Expired);
 	});
 
 	if (m_callbacks.onDetached) {
@@ -182,7 +182,7 @@ void SessionManager::endAll()
 		sessions.push_back(session);
 	}
 	for (const std::shared_ptr<ServerSession>& session : sessions) {
-		end(*session);
+		end(*session, SessionEndReason::ServerStopped);
 	}
 }
 
@@ -192,7 +192,7 @@ void SessionManager::attach(ServerSession& session, const std::shared_ptr<Connec
 	m_idsByConnection[connection->getId()] = session.m_id;
 }
 
-void SessionManager::end(ServerSession& session)
+void SessionManager::end(ServerSession& session, SessionEndReason reason)
 {
 	if (!session.m_owner) {
 		return;
@@ -212,7 +212,7 @@ void SessionManager::end(ServerSession& session)
 
 	engineLogInfo("Session ", session.m_id, " ended");
 	if (m_callbacks.onEnded) {
-		m_callbacks.onEnded(keep);
+		m_callbacks.onEnded(keep, reason);
 	}
 }
 }

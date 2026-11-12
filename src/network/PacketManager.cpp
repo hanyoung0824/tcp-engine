@@ -4,6 +4,7 @@
 #include "tcpengine/network/packet/PacketWriter.hpp"
 
 #include <chrono>
+#include <exception>
 #include <limits>
 #include <stdexcept>
 
@@ -117,29 +118,47 @@ std::optional<std::size_t> PacketManager::onReceive(const std::shared_ptr<Connec
 
 		PacketReader body(rest.subspan(packetHeaderSize, size - packetHeaderSize));
 
-		if (id == controlPacketId) {
-			if (!handleControlPacket(connection, body)) {
-				engineLogWarning("Invalid control packet from ", connection->getAddress());
+		// 핸들러 예외가 io_context 밖으로 나가면 서버 전체가 죽으므로 이 연결만 끊음
+		try {
+			if (!dispatch(connection, id, body)) {
 				return std::nullopt;
 			}
-			processed += size;
-			continue;
 		}
-
-		const auto it = m_dispatchers.find(id);
-		if (it == m_dispatchers.end()) {
-			engineLogWarning("Unknown packet id ", id, " from ", connection->getAddress());
+		catch (const std::exception& e) {
+			engineLogError("Exception while handling packet id ", id, " from ", connection->getAddress(), ": ", e.what());
 			return std::nullopt;
 		}
-
-		if (!it->second(connection, body)) {
-			engineLogWarning("Invalid packet id ", id, " from ", connection->getAddress());
+		catch (...) {
+			engineLogError("Unknown exception while handling packet id ", id, " from ", connection->getAddress());
 			return std::nullopt;
 		}
 
 		processed += size;
 	}
 	return processed;
+}
+
+bool PacketManager::dispatch(const std::shared_ptr<Connection>& connection, std::uint16_t id, PacketReader& body) const
+{
+	if (id == controlPacketId) {
+		if (!handleControlPacket(connection, body)) {
+			engineLogWarning("Invalid control packet from ", connection->getAddress());
+			return false;
+		}
+		return true;
+	}
+
+	const auto it = m_dispatchers.find(id);
+	if (it == m_dispatchers.end()) {
+		engineLogWarning("Unknown packet id ", id, " from ", connection->getAddress());
+		return false;
+	}
+
+	if (!it->second(connection, body)) {
+		engineLogWarning("Invalid packet id ", id, " from ", connection->getAddress());
+		return false;
+	}
+	return true;
 }
 
 bool PacketManager::handleControlPacket(const std::shared_ptr<Connection>& connection, PacketReader& body) const

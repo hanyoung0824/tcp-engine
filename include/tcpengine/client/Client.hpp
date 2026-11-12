@@ -18,6 +18,7 @@ class HeartbeatMonitor;
 class PacketManager;
 
 // registerHandler()는 파생 클래스 생성자에서 run() 전에 호출
+// 패킷 핸들러에서 예외가 나면 연결을 끊음. 그 밖에서 잡히지 않은 예외는 로그를 남기고 abort()하여 덤프를 남김
 class Client
 {
 public:

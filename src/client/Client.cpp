@@ -49,6 +49,7 @@ bool Client::isConnected() const
 
 int Client::run(std::shared_ptr<LogSink> engineLogSink, std::shared_ptr<LogSink> appLogSink)
 {
+	installTerminateHandler();
 	const ScopedLogFlush logFlush;
 	setEngineLogSink(std::move(engineLogSink));
 	setAppLogSink(std::move(appLogSink));

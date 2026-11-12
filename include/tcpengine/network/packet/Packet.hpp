@@ -25,7 +25,11 @@ public:
 
 	virtual std::uint16_t getPacketId() const = 0;
 
+	// 바이트를 필드로 읽음. 형식만 보며 값 규칙은 validate()에서 검사
 	virtual bool read(PacketReader& reader) = 0;
+
+	// 필드 값 규칙(길이, 범위 등). 받은 패킷은 이걸 통과해야 핸들러로 넘어감
+	virtual bool validate() const { return true; }
 
 	virtual void write(PacketWriter& writer) const = 0;
 

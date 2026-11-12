@@ -19,12 +19,14 @@ class SessionManager
 public:
 	using SessionCallback = std::function<void(const std::shared_ptr<Session>& session)>;
 
+	using SessionEndCallback = std::function<void(const std::shared_ptr<Session>& session, SessionEndReason reason)>;
+
 	struct Callbacks
 	{
 		SessionCallback onStarted;
 		SessionCallback onResumed;
 		SessionCallback onDetached;
-		SessionCallback onEnded;
+		SessionEndCallback onEnded;
 	};
 
 	SessionManager(boost::asio::any_io_executor executor, std::chrono::seconds resumeTimeout, Callbacks callbacks);
@@ -54,7 +56,7 @@ private:
 
 	void attach(ServerSession& session, const std::shared_ptr<Connection>& connection);
 
-	void end(ServerSession& session);
+	void end(ServerSession& session, SessionEndReason reason);
 
 private:
 	boost::asio::any_io_executor m_executor;

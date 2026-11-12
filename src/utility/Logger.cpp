@@ -1,5 +1,6 @@
 #include "Logger.hpp"
 
+#include <cstdlib>
 #include <exception>
 #include <iterator>
 #include <utility>
@@ -28,8 +29,9 @@ void Logger::setOutput(LogSource source, std::shared_ptr<LogSink> output)
 {
 	{
 		std::lock_guard lock(m_mutex);
-		outputOf(source) = std::move(output);
-		if (!outputOf(source)) {
+		const bool hasOutput = output != nullptr;
+		m_outputs[static_cast<std::size_t>(source)].store(std::move(output));
+		if (!hasOutput) {
 			return;
 		}
 
@@ -43,6 +45,12 @@ void Logger::setOutput(LogSource source, std::shared_ptr<LogSink> output)
 		}
 	}
 	m_wakeUp.notify_one();
+}
+
+bool Logger::isEnabled(LogSource source, LogLevel level) const
+{
+	const std::shared_ptr<LogSink> output = outputOf(source);
+	return !output || level >= output->getLevel();
 }
 
 void Logger::write(LogSource source, LogLevel level, std::string message)
@@ -69,6 +77,32 @@ void Logger::flush()
 {
 	std::unique_lock lock(m_mutex);
 	m_drained.wait(lock, [this] { return !m_thread.joinable() || m_shutDown || (m_pending.empty() && !m_delivering); });
+}
+
+void Logger::writeAndFlushBeforeAbort(LogSource source, std::string message, std::chrono::milliseconds timeout)
+{
+	const auto deadline = std::chrono::steady_clock::now() + timeout;
+	Item item{ source, LogEntry{ std::chrono::system_clock::now(), LogLevel::Error, std::this_thread::get_id(), std::move(message) } };
+
+	std::unique_lock lock(m_mutex, std::defer_lock);
+	while (!lock.try_lock()) {
+		if (std::chrono::steady_clock::now() >= deadline) {
+			return;
+		}
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	}
+
+	// 로그 스레드가 없거나 로그 스레드 자신이 죽는 중이면 기다려도 출력되지 않으므로 직접 출력
+	if (m_shutDown || !m_thread.joinable() || m_thread.get_id() == std::this_thread::get_id()) {
+		if (const std::shared_ptr<LogSink>& output = outputOf(source)) {
+			deliver(*output, item.entry);
+		}
+		return;
+	}
+
+	m_pending.push_back(std::move(item));
+	m_wakeUp.notify_one();
+	m_drained.wait_until(lock, deadline, [this] { return m_pending.empty() && !m_delivering; });
 }
 
 void Logger::shutdown()
@@ -107,7 +141,9 @@ void Logger::runLoop()
 			if (items.empty() && m_stopping) {
 				return;
 			}
-			outputs = m_outputs;
+			for (std::size_t i = 0; i < sourceCount; ++i) {
+				outputs[i] = m_outputs[i].load();
+			}
 			m_delivering = true;
 		}
 
@@ -166,6 +202,31 @@ void setAppLogSink(std::shared_ptr<LogSink> sink)
 	getLogger().setOutput(LogSource::App, std::move(sink));
 }
 
+void installTerminateHandler()
+{
+	std::set_terminate([] {
+		// 메모리 부족이나 sink 오류로 여기서 다시 던질 수 있음. 밖으로 나가면 abort()에 닿지 못하므로 모두 삼킴
+		try {
+			std::string message = "std::terminate() called";
+			if (const std::exception_ptr exception = std::current_exception()) {
+				try {
+					std::rethrow_exception(exception);
+				}
+				catch (const std::exception& e) {
+					message = std::string("Uncaught exception: ") + e.what();
+				}
+				catch (...) {
+					message = "Uncaught unknown exception";
+				}
+			}
+			getLogger().writeAndFlushBeforeAbort(LogSource::Engine, std::move(message), std::chrono::seconds(2));
+		}
+		catch (...) {
+		}
+		std::abort();
+	});
+}
+
 ScopedLogFlush::~ScopedLogFlush()
 {
 	getLogger().flush();
@@ -173,6 +234,11 @@ ScopedLogFlush::~ScopedLogFlush()
 
 namespace detail
 {
+	bool isLogEnabled(LogLevel level)
+	{
+		return getLogger().isEnabled(LogSource::App, level);
+	}
+
 	void writeLog(LogLevel level, std::string message)
 	{
 		getLogger().write(LogSource::App, level, std::move(message));

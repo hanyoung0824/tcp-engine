@@ -57,6 +57,9 @@ public:
 		std::span<const std::uint8_t> data) const;
 
 private:
+	// 패킷 하나를 핸들러로 넘김. 잘못된 패킷이면 로그를 남기고 false
+	bool dispatch(const std::shared_ptr<Connection>& connection, std::uint16_t id, PacketReader& body) const;
+
 	bool handleControlPacket(const std::shared_ptr<Connection>& connection, PacketReader& body) const;
 
 private:

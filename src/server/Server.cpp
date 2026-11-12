@@ -65,6 +65,7 @@ std::shared_ptr<Session> Server::findSession(const std::shared_ptr<Connection>& 
 
 int Server::run(std::shared_ptr<LogSink> engineLogSink, std::shared_ptr<LogSink> appLogSink)
 {
+	installTerminateHandler();
 	const ScopedLogFlush logFlush;
 	setEngineLogSink(std::move(engineLogSink));
 	setAppLogSink(std::move(appLogSink));
@@ -194,7 +195,7 @@ void Server::createSessionManager()
 			[this](const std::shared_ptr<Session>& session) { onSessionStarted(session); },
 			[this](const std::shared_ptr<Session>& session) { onSessionResumed(session); },
 			[this](const std::shared_ptr<Session>& session) { onSessionDetached(session); },
-			[this](const std::shared_ptr<Session>& session) { onSessionEnded(session); },
+			[this](const std::shared_ptr<Session>& session, SessionEndReason reason) { onSessionEnded(session, reason); },
 		});
 }
 }

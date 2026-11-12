@@ -26,6 +26,7 @@ class SessionManager;
 class ShutdownSignal;
 
 // registerHandler()는 파생 클래스 생성자에서 run() 전에 호출
+// 패킷 핸들러에서 예외가 나면 그 연결만 끊음. 그 밖에서 잡히지 않은 예외는 로그를 남기고 abort()하여 덤프를 남김
 class Server
 {
 public:
@@ -89,8 +90,7 @@ protected:
 	// 연결이 끊겨 재접속을 기다리기 시작함
 	virtual void onSessionDetached(const std::shared_ptr<Session>&) {}
 
-	// 재접속 시간이 지났거나 close()됐거나 서버가 끝남
-	virtual void onSessionEnded(const std::shared_ptr<Session>&) {}
+	virtual void onSessionEnded(const std::shared_ptr<Session>&, SessionEndReason) {}
 
 private:
 	// m_settings를 검증하고 실행

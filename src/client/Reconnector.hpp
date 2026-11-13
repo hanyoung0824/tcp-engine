@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ClientTransport.hpp"
+
 #include <boost/asio.hpp>
 
 #include <chrono>
@@ -12,7 +14,7 @@ namespace tcpengine
 class Reconnector
 {
 public:
-	using ConnectResult = std::function<void(bool connected)>;
+	using ConnectResult = ClientTransport::ConnectResult;
 	using Attempt = std::function<void(ConnectResult onResult)>;
 
 	Reconnector(boost::asio::any_io_executor executor, std::chrono::seconds maxDelay, Attempt attempt);

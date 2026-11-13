@@ -7,7 +7,6 @@
 #include "tcpengine/utility/Log.hpp"
 
 #include <atomic>
-#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <memory>

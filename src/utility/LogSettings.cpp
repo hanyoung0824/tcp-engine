@@ -1,8 +1,10 @@
 #include "tcpengine/utility/LogSettings.hpp"
 
+#include "SettingsReader.hpp"
+
 #include <nlohmann/json.hpp>
 
-#include <cstdint>
+#include <cstddef>
 #include <filesystem>
 #include <stdexcept>
 #include <string>
@@ -31,16 +33,6 @@ namespace
 		throw std::invalid_argument("log level must be one of: debug, info, warning, error");
 	}
 
-	// size_t로 바로 받으면 음수가 에러 없이 큰 값으로 바뀌므로 int64로 받아 검사
-	std::size_t readPositive(const nlohmann::json& json, const char* key)
-	{
-		const std::int64_t value = json.at(key).get<std::int64_t>();
-		if (value <= 0) {
-			throw std::invalid_argument(std::string("log file ") + key + " must be positive");
-		}
-		return static_cast<std::size_t>(value);
-	}
-
 	ConsoleLogSettings readConsole(const nlohmann::json& json)
 	{
 		ConsoleLogSettings settings;
@@ -53,8 +45,8 @@ namespace
 		FileLogSettings settings;
 		settings.level = readLevel(json);
 		settings.path = json.at("path").get<std::string>();
-		settings.maxSize = readPositive(json, "maxSizeMB") * bytesPerMegabyte;
-		settings.maxFiles = readPositive(json, "maxFiles");
+		settings.maxSize = config::readPositive(json, "maxSizeMB") * bytesPerMegabyte;
+		settings.maxFiles = config::readPositive(json, "maxFiles");
 		return settings;
 	}
 

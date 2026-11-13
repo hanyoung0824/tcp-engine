@@ -62,6 +62,13 @@ private:
 		Closed,   // 소켓을 닫고 onDisconnected까지 마침
 	};
 
+	// 소켓을 닫는 방법. Shutdown은 FIN을 보내고 닫고, Reset은 커널에 남은 데이터까지 버리고 RST를 보냄
+	enum class SocketClose
+	{
+		Shutdown,
+		Reset,
+	};
+
 	void startRead();
 
 	void onRead(const boost::system::error_code& ec, std::size_t length);
@@ -70,11 +77,11 @@ private:
 
 	void onWrite(const boost::system::error_code& ec, std::size_t length);
 
-	// 보낼 것이 끝났음을 알림. 상대가 끊으면 읽기가 eof로 끝나고 abort()로 마무리됨
+	// 보낼 것이 끝났음을 알림(FIN). 상대도 끊으면 읽기가 eof로 끝나 Closed가 됨
 	void shutdownSend();
 
 	// 소켓을 닫고 onDisconnected와 onClosed를 부름. 한 번만 처리함
-	void finish(bool sendReset);
+	void finish(SocketClose how);
 
 private:
 	boost::asio::ip::tcp::socket m_socket;

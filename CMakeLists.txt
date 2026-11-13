@@ -58,7 +58,11 @@ tcp_engine_add_layer(tcp_engine_utility utility
 	${SOURCE_DIR}/utility/EngineLog.hpp
 	${SOURCE_DIR}/utility/Logger.hpp
 	${SOURCE_DIR}/utility/Logger.cpp
+	${SOURCE_DIR}/utility/LogSystem.hpp
+	${SOURCE_DIR}/utility/LogSystem.cpp
 	${SOURCE_DIR}/utility/LogSettings.cpp
+	${SOURCE_DIR}/utility/SettingsReader.hpp
+	${SOURCE_DIR}/utility/SettingsReader.cpp
 	${SOURCE_DIR}/utility/TokenBucket.cpp
 )
 add_library(tcp::utility ALIAS tcp_engine_utility)
@@ -88,6 +92,8 @@ tcp_engine_add_layer(tcp_engine_network network
 	${INCLUDE_DIR}/network/Connection.hpp
 	${INCLUDE_DIR}/network/DisconnectReason.hpp
 	${SOURCE_DIR}/network/PacketHeader.hpp
+	${SOURCE_DIR}/network/ControlPackets.hpp
+	${SOURCE_DIR}/network/ControlPackets.cpp
 	${SOURCE_DIR}/network/PacketManager.hpp
 	${SOURCE_DIR}/network/PacketManager.cpp
 	${SOURCE_DIR}/network/ReceiveRateLimiter.hpp
@@ -131,8 +137,10 @@ tcp_engine_add_layer(tcp_engine_server server
 	${SOURCE_DIR}/server/StatsReporter.cpp
 	${SOURCE_DIR}/server/ShutdownSignal.hpp
 	${SOURCE_DIR}/server/ShutdownSignal.cpp
-	${SOURCE_DIR}/server/ConnectionManager.hpp
-	${SOURCE_DIR}/server/ConnectionManager.cpp
+	${SOURCE_DIR}/server/TcpConnectionRegistry.hpp
+	${SOURCE_DIR}/server/TcpConnectionRegistry.cpp
+	${SOURCE_DIR}/server/AdmissionControl.hpp
+	${SOURCE_DIR}/server/AdmissionControl.cpp
 	${SOURCE_DIR}/server/TcpServerTransport.hpp
 	${SOURCE_DIR}/server/TcpServerTransport.cpp
 )

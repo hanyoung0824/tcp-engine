@@ -2,6 +2,7 @@
 
 #include "ClientTransportFactory.hpp"
 #include "ConnectionEventHandler.hpp"
+#include "ControlPackets.hpp"
 #include "EngineLog.hpp"
 #include "HeartbeatMonitor.hpp"
 #include "Logger.hpp"
@@ -136,7 +137,7 @@ void Client::quit()
 	m_reconnector->cancel();
 	// 세션이 있으면 재접속을 기다리지 말고 바로 끝내 달라고 알림
 	if (!m_sessionToken.empty()) {
-		m_transport->send(PacketManager::makeControlPacket(ControlType::Logout));
+		m_transport->send(control::make(ControlType::Logout));
 	}
 	m_transport->close();
 }
@@ -145,16 +146,16 @@ void Client::registerControlHandlers()
 {
 	// 서버가 알려 준 간격으로 하트비트를 시작. 클라이언트가 Ping을 보내고 서버가 Pong으로 답함
 	m_packetManager->setControlHandler(ControlType::ServerHello, [this](const std::shared_ptr<Connection>& connection, PacketReader& body) {
-		const std::optional<ServerHello> hello = PacketManager::readServerHello(body);
+		const std::optional<control::ServerHello> hello = control::readServerHello(body);
 		if (!hello) {
 			return false;
 		}
-		m_heartbeatMonitor->start(connection, hello->heartbeat, PacketManager::makePingPacket());
+		m_heartbeatMonitor->start(connection, hello->heartbeat, control::ping());
 		return true;
 	});
 
 	m_packetManager->setControlHandler(ControlType::Disconnect, [this](const std::shared_ptr<Connection>&, PacketReader& body) {
-		const std::optional<DisconnectReason> reason = PacketManager::readDisconnect(body);
+		const std::optional<DisconnectReason> reason = control::readDisconnect(body);
 		if (!reason) {
 			return false;
 		}
@@ -199,9 +200,9 @@ std::shared_ptr<const ConnectionEventHandler> Client::makeConnectionEvents()
 		[this](const std::shared_ptr<Connection>& connection) {
 			m_connected = true;
 			m_reconnector->reset();
-			connection->send(PacketManager::makeClientHelloPacket(ClientHello{ engineProtocolVersion, m_protocolVersion }));
+			connection->send(control::clientHello(control::ClientHello{ engineProtocolVersion, m_protocolVersion }));
 			if (!m_sessionToken.empty()) {
-				connection->send(PacketManager::makeControlPacket(ControlType::Resume, m_sessionToken));
+				connection->send(control::make(ControlType::Resume, m_sessionToken));
 			}
 			onConnected(connection);
 		},

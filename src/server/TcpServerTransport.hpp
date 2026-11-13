@@ -3,7 +3,7 @@
 #include "Listener.hpp"
 #include "ServerTransport.hpp"
 #include "ConnectionEventHandler.hpp"
-#include "ConnectionManager.hpp"
+#include "TcpConnectionRegistry.hpp"
 #include "ConnectionOptions.hpp"
 
 #include <boost/asio.hpp>
@@ -29,7 +29,7 @@ public:
 	void closeAll(std::shared_ptr<const Connection::Buffer> farewell, std::function<void()> onAllClosed) override;
 
 private:
-	ConnectionManager m_connectionManager;
+	TcpConnectionRegistry m_connectionRegistry;
 	Listener m_listener;
 };
 }

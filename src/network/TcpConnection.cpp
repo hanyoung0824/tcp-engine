@@ -104,7 +104,7 @@ void TcpConnection::close()
 
 void TcpConnection::abort()
 {
-	finish(false);
+	finish(SocketClose::Shutdown);
 }
 
 void TcpConnection::reset()
@@ -114,10 +114,10 @@ void TcpConnection::reset()
 	}
 	m_state = State::Closing;
 	// 브로드캐스트처럼 연결 목록을 도는 중에 불릴 수 있어, 그 목록을 바꾸는 onDisconnected는 나중에 부름
-	asio::post(m_socket.get_executor(), [self = shared_from_this()] { self->finish(true); });
+	asio::post(m_socket.get_executor(), [self = shared_from_this()] { self->finish(SocketClose::Reset); });
 }
 
-void TcpConnection::finish(bool sendReset)
+void TcpConnection::finish(SocketClose how)
 {
 	if (m_state == State::Closed) {
 		return;
@@ -126,7 +126,7 @@ void TcpConnection::finish(bool sendReset)
 	m_closeTimer.cancel();
 
 	boost::system::error_code ec;
-	if (sendReset) {
+	if (how == SocketClose::Reset) {
 		// linger 0으로 닫으면 커널 송신 버퍼에 남은 데이터를 버리고 RST를 보냄. 받지 않는 상대에게 버퍼를 묶어 두지 않음
 		m_socket.set_option(tcp::socket::linger(true, 0), ec);
 	}
@@ -196,14 +196,14 @@ void TcpConnection::onRead(const boost::system::error_code& ec, std::size_t leng
 	}
 
 	if (!result) {
-		engineLogWarning("Invalid data from ", m_address, ", closing");
+		engineLogWarning("Invalid data from ", m_address, ", aborting");
 		abort();
 		return;
 	}
 
 	const std::size_t processed = *result;
 	if (processed > m_receivedLength) {
-		engineLogError("Receive handler processed more bytes than received, closing ", m_address);
+		engineLogError("Receive handler processed more bytes than received from ", m_address, ", aborting");
 		abort();
 		return;
 	}
@@ -215,7 +215,7 @@ void TcpConnection::onRead(const boost::system::error_code& ec, std::size_t leng
 	}
 
 	if (m_receivedLength == m_receiveBuffer.size()) {
-		engineLogWarning("Receive buffer full from ", m_address, ", closing");
+		engineLogWarning("Receive buffer full from ", m_address, ", aborting");
 		abort();
 		return;
 	}

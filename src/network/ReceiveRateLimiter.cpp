@@ -1,7 +1,5 @@
 #include "ReceiveRateLimiter.hpp"
 
-#include "EngineLog.hpp"
-
 namespace tcpengine
 {
 ReceiveRateLimiter::ReceiveRateLimiter(double packetsPerSecond)
@@ -20,7 +18,6 @@ bool ReceiveRateLimiter::tryReceive(const Connection& connection)
 	if (it == m_buckets.end() || it->second.tryTake()) {
 		return true;
 	}
-	engineLogWarning("Receive rate over ", m_packetsPerSecond, " packets/s from ", connection.getAddress(), ", resetting");
 	return false;
 }
 

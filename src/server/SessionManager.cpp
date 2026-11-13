@@ -1,7 +1,7 @@
 #include "SessionManager.hpp"
 
+#include "ControlPackets.hpp"
 #include "EngineLog.hpp"
-#include "PacketManager.hpp"
 
 #include <cstdint>
 #include <iomanip>
@@ -112,7 +112,7 @@ std::shared_ptr<Session> SessionManager::start(const std::shared_ptr<Connection>
 	m_idsByToken.emplace(session->m_token, id);
 	attach(*session, connection);
 
-	connection->send(PacketManager::makeControlPacket(ControlType::SessionStarted, session->m_token));
+	connection->send(control::make(ControlType::SessionStarted, session->m_token));
 	engineLogInfo("Session ", id, " started for ", connection->getAddress());
 
 	if (m_callbacks.onStarted) {
@@ -135,7 +135,7 @@ void SessionManager::resume(const std::shared_ptr<Connection>& connection, const
 	const auto idIt = m_idsByToken.find(token);
 	if (m_stopped || idIt == m_idsByToken.end() || m_idsByConnection.contains(connection->getId())) {
 		engineLogInfo("Resume failed from ", connection->getAddress());
-		connection->send(PacketManager::makeControlPacket(ControlType::ResumeFailed));
+		connection->send(control::make(ControlType::ResumeFailed));
 		return;
 	}
 
@@ -144,7 +144,7 @@ void SessionManager::resume(const std::shared_ptr<Connection>& connection, const
 		// 이전 연결이 끊긴 걸 아직 모르는 경우. 이전 연결을 버리고 새 연결로 넘김
 		const std::shared_ptr<Connection> previous = std::move(session->m_connection);
 		m_idsByConnection.erase(previous->getId());
-		previous->send(PacketManager::makeDisconnectPacket(DisconnectReason::Replaced));
+		previous->send(control::disconnect(DisconnectReason::Replaced));
 		previous->close();
 	}
 	else {
@@ -152,7 +152,7 @@ void SessionManager::resume(const std::shared_ptr<Connection>& connection, const
 	}
 
 	attach(*session, connection);
-	connection->send(PacketManager::makeControlPacket(ControlType::SessionResumed));
+	connection->send(control::make(ControlType::SessionResumed));
 	engineLogInfo("Session ", session->m_id, " resumed from ", connection->getAddress());
 
 	if (m_callbacks.onResumed) {
@@ -244,7 +244,7 @@ void SessionManager::end(ServerSession& session, SessionEndReason reason, Connec
 		}
 		else {
 			if (const std::optional<DisconnectReason> notice = noticeFor(reason)) {
-				connection->send(PacketManager::makeDisconnectPacket(*notice));
+				connection->send(control::disconnect(*notice));
 			}
 			connection->close();
 		}

@@ -10,7 +10,6 @@
 #include <atomic>
 #include <cstdint>
 #include <memory>
-#include <unordered_set>
 
 namespace boost::asio
 {
@@ -19,12 +18,11 @@ class io_context;
 
 namespace tcpengine
 {
+class AdmissionControl;
 struct ConnectionEventHandler;
 class HeartbeatMonitor;
-class LoginTimeoutMonitor;
 struct NetworkStats;
 class PacketManager;
-class ReceiveRateLimiter;
 class ServerTransport;
 class SessionManager;
 class StatsReporter;
@@ -45,7 +43,8 @@ public:
 	int run();
 
 	// 어느 스레드에서 불러도 되고 여러 번 불러도 한 번만 처리함. SIGINT, SIGTERM도 이 함수를 거침
-	// 접속 받기 중단 → 세션 모두 끝냄(onSessionEnded) → 연결마다 남은 데이터를 보내고 닫음 → run() 반환
+	// 접속 받기 중단 → 세션 모두 끝냄(onSessionEnded) → 연결마다 ServerShutdown을 알리고 남은 데이터를 보낸 뒤 닫음 → run() 반환
+	// 신호가 한 번 더 오면 연결이 닫히기를 기다리지 않고 바로 run()을 끝냄
 	// 종료 중에는 새 연결과 새 세션을 받지 않음. run() 전에 부르면 run()이 시작하자마자 종료함
 	void stop();
 
@@ -132,10 +131,8 @@ private:
 	// 아래는 start() 동안만 있음
 	std::shared_ptr<NetworkStats> m_networkStats;
 	std::unique_ptr<HeartbeatMonitor> m_heartbeatMonitor;
-	std::unique_ptr<ReceiveRateLimiter> m_receiveRateLimiter;
-	std::unique_ptr<LoginTimeoutMonitor> m_loginTimeoutMonitor;
-	// ClientHello로 버전 확인을 마친 연결. 그 전에는 제어 패킷 말고는 받지 않음
-	std::unordered_set<Connection::ConnectionId> m_greetedConnections;
+	// 접속 → ClientHello → 로그인 순서와 수신 제한을 지키는지 봄
+	std::unique_ptr<AdmissionControl> m_admissionControl;
 	std::unique_ptr<SessionManager> m_sessionManager;
 	std::unique_ptr<StatsReporter> m_statsReporter;
 	std::unique_ptr<ServerTransport> m_transport;

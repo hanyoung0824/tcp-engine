@@ -1,12 +1,10 @@
 #include "tcpengine/server/ServerSettings.hpp"
 
+#include "SettingsReader.hpp"
 #include "tcpengine/utility/JsonConfig.hpp"
 
 #include <nlohmann/json.hpp>
 
-#include <chrono>
-#include <cstddef>
-#include <cstdint>
 #include <exception>
 #include <optional>
 #include <stdexcept>
@@ -19,8 +17,8 @@ namespace
 	HeartbeatSettings readHeartbeat(const nlohmann::json& json)
 	{
 		HeartbeatSettings heartbeat;
-		heartbeat.interval = std::chrono::seconds(json.at("interval").get<std::int64_t>());
-		heartbeat.timeout = std::chrono::seconds(json.at("timeout").get<std::int64_t>());
+		heartbeat.interval = config::readSeconds(json, "interval");
+		heartbeat.timeout = config::readSeconds(json, "timeout");
 		return heartbeat;
 	}
 }
@@ -71,33 +69,15 @@ ServerSettings ServerSettings::fromJson(const nlohmann::json& file)
 		}
 		settings.transport = *transport;
 
-		// unsigned short로 바로 받으면 범위를 넘는 값이 에러 없이 바뀌므로 int로 받아 검사
-		const int port = engine.at("port").get<int>();
-		if (port < 0 || port > 65535) {
-			throw std::invalid_argument("port must be between 1 and 65535");
-		}
-		settings.port = static_cast<unsigned short>(port);
-
+		settings.port = config::readPort(engine, "port");
 		settings.heartbeat = readHeartbeat(engine.at("heartbeat"));
-		settings.session.resumeTimeout = std::chrono::seconds(engine.at("session").at("resumeTimeout").get<std::int64_t>());
-		settings.closeTimeout = std::chrono::seconds(engine.at("closeTimeout").get<std::int64_t>());
-
-		// size_t로 바로 받으면 음수가 에러 없이 큰 값으로 바뀌므로 int64로 받아 검사
-		const std::int64_t sendQueueLimitKB = engine.at("sendQueueLimitKB").get<std::int64_t>();
-		if (sendQueueLimitKB <= 0) {
-			throw std::invalid_argument("sendQueueLimitKB must be positive");
-		}
-		settings.sendQueueLimit = static_cast<std::size_t>(sendQueueLimitKB) * 1024;
+		settings.session.resumeTimeout = config::readSeconds(engine.at("session"), "resumeTimeout");
+		settings.closeTimeout = config::readSeconds(engine, "closeTimeout");
+		settings.sendQueueLimit = config::readPositive(engine, "sendQueueLimitKB") * 1024;
 		settings.receivePacketsPerSecond = engine.at("receiveLimit").at("packetsPerSecond").get<double>();
-		settings.statsInterval = std::chrono::seconds(engine.at("statsIntervalSeconds").get<std::int64_t>());
-		settings.loginTimeout = std::chrono::seconds(engine.at("loginTimeoutSeconds").get<std::int64_t>());
-
-		const std::int64_t maxConnections = engine.at("maxConnections").get<std::int64_t>();
-		if (maxConnections <= 0) {
-			throw std::invalid_argument("maxConnections must be positive");
-		}
-		settings.maxConnections = static_cast<std::size_t>(maxConnections);
-
+		settings.statsInterval = config::readSeconds(engine, "statsIntervalSeconds");
+		settings.loginTimeout = config::readSeconds(engine, "loginTimeoutSeconds");
+		settings.maxConnections = config::readPositive(engine, "maxConnections");
 		settings.validate();
 	}
 	catch (const std::exception& e) {

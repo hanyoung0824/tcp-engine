@@ -18,7 +18,7 @@ enum class LogSource
 
 // 엔진 안에서 로그 시스템을 시작하고 flush하는 곳. 프로세스에 하나뿐이라 모두 static
 // 엔진 코드가 로그를 남길 때는 EngineLog.hpp를 씀
-// spdlog 비동기 로거 위에서 동작하며 spdlog는 Logger.cpp 안에만 두어 엔진의 다른 층과 응용은 모름
+// spdlog 비동기 로거 위에서 동작하며 spdlog는 LogSystem.cpp 안에만 두어 엔진의 다른 층과 응용은 모름
 // 엔진 로그와 응용 로그는 로그 스레드 하나와 큐 하나를 함께 써서 쓴 순서대로 출력됨
 class Logger
 {

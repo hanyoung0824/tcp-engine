@@ -1,8 +1,6 @@
 #pragma once
 
 #include "PacketHeader.hpp"
-#include "tcpengine/network/DisconnectReason.hpp"
-#include "tcpengine/network/HeartbeatSettings.hpp"
 #include "tcpengine/network/PacketDispatcher.hpp"
 #include "tcpengine/network/Connection.hpp"
 #include "tcpengine/network/packet/PacketReader.hpp"
@@ -13,24 +11,11 @@
 #include <memory>
 #include <optional>
 #include <span>
-#include <string_view>
 #include <unordered_map>
 
 namespace tcpengine
 {
-// 서버가 접속 직후 클라이언트에 한 번 보내는 정보
-struct ServerHello
-{
-	HeartbeatSettings heartbeat;
-};
-
-// 클라이언트가 접속 직후 가장 먼저 보내는 정보. 서버는 버전이 다르면 VersionMismatch로 끊음
-struct ClientHello
-{
-	std::uint16_t engineVersion = 0;
-	std::uint16_t appVersion = 0;
-};
-
+// 받은 바이트를 패킷으로 잘라 제어 패킷 핸들러나 응용 핸들러로 보냄. 제어 패킷 형식은 ControlPackets.hpp
 class PacketManager
 {
 public:
@@ -39,29 +24,6 @@ public:
 
 	// 패킷 하나를 처리하기 전에 부름. false면 그 패킷을 처리하지 않고 연결을 끊음
 	using PacketFilter = std::function<bool(const std::shared_ptr<Connection>& connection, std::uint16_t packetId)>;
-
-	static std::shared_ptr<const Connection::Buffer> makeControlPacket(ControlType type);
-
-	static std::shared_ptr<const Connection::Buffer> makeControlPacket(ControlType type, std::string_view text);
-
-	static std::shared_ptr<const Connection::Buffer> makePingPacket();
-
-	static std::shared_ptr<const Connection::Buffer> makePongPacket();
-
-	// 하트비트 interval과 timeout을 uint16 초로 보내므로 65535초를 넘으면 nullptr
-	static std::shared_ptr<const Connection::Buffer> makeServerHelloPacket(const ServerHello& hello);
-
-	// ServerHello 본문(ControlType 다음부터)을 읽음. 형식이나 값이 틀리면 nullopt
-	static std::optional<ServerHello> readServerHello(PacketReader& body);
-
-	// 클라이언트가 접속 직후 보내는 엔진 버전과 응용 버전
-	static std::shared_ptr<const Connection::Buffer> makeClientHelloPacket(const ClientHello& hello);
-
-	static std::optional<ClientHello> readClientHello(PacketReader& body);
-
-	static std::shared_ptr<const Connection::Buffer> makeDisconnectPacket(DisconnectReason reason);
-
-	static std::optional<DisconnectReason> readDisconnect(PacketReader& body);
 
 	PacketManager() = default;
 

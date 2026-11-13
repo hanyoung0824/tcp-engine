@@ -1,12 +1,12 @@
 #include "tcpengine/server/Server.hpp"
 
+#include "AdmissionControl.hpp"
 #include "ConnectionEventHandler.hpp"
+#include "ControlPackets.hpp"
 #include "EngineLog.hpp"
 #include "HeartbeatMonitor.hpp"
-#include "LoginTimeoutMonitor.hpp"
 #include "Logger.hpp"
 #include "PacketManager.hpp"
-#include "ReceiveRateLimiter.hpp"
 #include "ServerTransportFactory.hpp"
 #include "SessionManager.hpp"
 #include "StatsReporter.hpp"
@@ -17,7 +17,6 @@
 
 #include <exception>
 #include <memory>
-#include <optional>
 #include <span>
 #include <string>
 
@@ -96,7 +95,7 @@ int Server::start()
 		return 1;
 	}
 
-	std::shared_ptr<const Connection::Buffer> serverHello = PacketManager::makeServerHelloPacket(ServerHello{ m_settings.heartbeat });
+	std::shared_ptr<const Connection::Buffer> serverHello = control::serverHello(control::ServerHello{ m_settings.heartbeat });
 	if (!serverHello) {
 		engineLogError("Heartbeat interval and timeout must be 65535 seconds or less");
 		return 1;
@@ -125,28 +124,12 @@ int Server::start()
 	}
 
 	m_heartbeatMonitor = std::make_unique<HeartbeatMonitor>(m_ioContext->get_executor(), m_networkStats);
-	m_receiveRateLimiter = std::make_unique<ReceiveRateLimiter>(m_settings.receivePacketsPerSecond);
-	m_loginTimeoutMonitor = std::make_unique<LoginTimeoutMonitor>(m_ioContext->get_executor(), m_settings.loginTimeout,
-		[this](const std::shared_ptr<Connection>& connection) {
-			engineLogWarning("Login timeout from ", connection->getAddress(), ", closing");
-			++m_networkStats->loginTimeouts;
-			disconnect(connection, DisconnectReason::LoginTimeout);
-		});
-
-	// 어기면 RST로 끊음. 연결이 닫히는 중이 되므로 남은 데이터는 잘못된 데이터로 따로 처리되지 않음
+	m_admissionControl = std::make_unique<AdmissionControl>(m_ioContext->get_executor(),
+		AdmissionControl::Settings{ m_protocolVersion, m_settings.receivePacketsPerSecond, m_settings.loginTimeout },
+		m_networkStats,
+		[this](const std::shared_ptr<Connection>& connection, DisconnectReason reason) { disconnect(connection, reason); });
 	m_packetManager->setPacketFilter([this](const std::shared_ptr<Connection>& connection, std::uint16_t packetId) {
-		if (!m_receiveRateLimiter->tryReceive(*connection)) {
-			++m_networkStats->receiveLimitResets;
-			connection->reset();
-			return false;
-		}
-		if (packetId != controlPacketId && !m_greetedConnections.contains(connection->getId())) {
-			engineLogWarning("Packet ", packetId, " before ClientHello from ", connection->getAddress(), ", resetting");
-			connection->reset();
-			return false;
-		}
-		++m_networkStats->packetsIn;
-		return true;
+		return m_admissionControl->allowPacket(connection, packetId);
 	});
 	createSessionManager();
 	m_statsReporter = std::make_unique<StatsReporter>(m_ioContext->get_executor(), m_settings.statsInterval, m_networkStats, *m_sessionManager);
@@ -166,9 +149,7 @@ int Server::start()
 	m_transport.reset();
 	m_sessionManager.reset();
 	m_heartbeatMonitor.reset();
-	m_receiveRateLimiter.reset();
-	m_loginTimeoutMonitor.reset();
-	m_greetedConnections.clear();
+	m_admissionControl.reset();
 	m_networkStats.reset();
 	return started ? 0 : 1;
 }
@@ -190,7 +171,7 @@ void Server::shutdown()
 	// 세션이 있는 연결은 여기서 ServerShutdown을 받고 닫히기 시작함
 	m_sessionManager->stop();
 	// 정리는 모두 이 안에서 끝남. 연결이 다 닫힌 뒤 남는 것은 하트비트 타이머 같은 필요 없는 대기뿐이라 바로 멈춤
-	m_transport->closeAll(PacketManager::makeDisconnectPacket(DisconnectReason::ServerShutdown),
+	m_transport->closeAll(control::disconnect(DisconnectReason::ServerShutdown),
 		[this] { m_ioContext->stop(); });
 }
 
@@ -201,30 +182,19 @@ void Server::forceStop()
 
 void Server::disconnect(const std::shared_ptr<Connection>& connection, DisconnectReason reason)
 {
-	connection->send(PacketManager::makeDisconnectPacket(reason));
+	connection->send(control::disconnect(reason));
 	connection->close();
 }
 
 void Server::registerControlHandlers()
 {
 	m_packetManager->setControlHandler(ControlType::ClientHello, [this](const std::shared_ptr<Connection>& connection, PacketReader& body) {
-		const std::optional<ClientHello> hello = PacketManager::readClientHello(body);
-		if (!hello) {
-			return false;
-		}
-		if (hello->engineVersion != engineProtocolVersion || hello->appVersion != m_protocolVersion) {
-			engineLogWarning("Version mismatch from ", connection->getAddress(), ": engine ", hello->engineVersion,
-				" (server ", engineProtocolVersion, "), app ", hello->appVersion, " (server ", m_protocolVersion, ")");
-			disconnect(connection, DisconnectReason::VersionMismatch);
-			return true;
-		}
-		m_greetedConnections.insert(connection->getId());
-		return true;
+		return m_admissionControl->handleClientHello(connection, body);
 	});
 
 	m_packetManager->setControlHandler(ControlType::Resume, [this](const std::shared_ptr<Connection>& connection, PacketReader& body) {
 		std::string token;
-		if (!m_greetedConnections.contains(connection->getId())
+		if (!m_admissionControl->isGreeted(*connection)
 			|| !body.readString(token) || !body.isEnd() || token.size() != sessionTokenLength) {
 			return false;
 		}
@@ -248,8 +218,7 @@ std::shared_ptr<const ConnectionEventHandler> Server::makeConnectionEvents(std::
 		[this, serverHello = std::move(serverHello)](const std::shared_ptr<Connection>& connection) {
 			connection->send(serverHello);
 			m_heartbeatMonitor->start(connection, m_settings.heartbeat, nullptr);
-			m_receiveRateLimiter->start(*connection);
-			m_loginTimeoutMonitor->start(connection);
+			m_admissionControl->onConnected(connection);
 			++m_networkStats->connectionsOpened;
 			onConnected(connection);
 		},
@@ -259,9 +228,7 @@ std::shared_ptr<const ConnectionEventHandler> Server::makeConnectionEvents(std::
 		},
 		[this](const std::shared_ptr<Connection>& connection) {
 			m_heartbeatMonitor->stop(*connection);
-			m_receiveRateLimiter->stop(*connection);
-			m_loginTimeoutMonitor->stop(*connection);
-			m_greetedConnections.erase(connection->getId());
+			m_admissionControl->onDisconnected(*connection);
 			++m_networkStats->connectionsClosed;
 			onDisconnected(connection);
 			if (m_sessionManager) {
@@ -275,11 +242,11 @@ void Server::createSessionManager()
 	m_sessionManager = std::make_unique<SessionManager>(m_ioContext->get_executor(), m_settings.session.resumeTimeout,
 		SessionManager::Callbacks{
 			[this](const std::shared_ptr<Session>& session) {
-				m_loginTimeoutMonitor->stop(*session->getConnection());
+				m_admissionControl->onLoggedIn(*session->getConnection());
 				onSessionStarted(session);
 			},
 			[this](const std::shared_ptr<Session>& session) {
-				m_loginTimeoutMonitor->stop(*session->getConnection());
+				m_admissionControl->onLoggedIn(*session->getConnection());
 				onSessionResumed(session);
 			},
 			[this](const std::shared_ptr<Session>& session) { onSessionDetached(session); },

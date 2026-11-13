@@ -1,7 +1,7 @@
-#include "ConnectionManager.hpp"
+#include "TcpConnectionRegistry.hpp"
 
+#include "ControlPackets.hpp"
 #include "EngineLog.hpp"
-#include "PacketManager.hpp"
 
 #include <array>
 #include <vector>
@@ -71,7 +71,7 @@ namespace
 	};
 }
 
-ConnectionManager::ConnectionManager(std::shared_ptr<const ConnectionEventHandler> handler, ConnectionOptions options,
+TcpConnectionRegistry::TcpConnectionRegistry(std::shared_ptr<const ConnectionEventHandler> handler, ConnectionOptions options,
 	std::size_t maxConnections)
 	: m_handler(std::move(handler)),
 	m_options(options),
@@ -79,7 +79,7 @@ ConnectionManager::ConnectionManager(std::shared_ptr<const ConnectionEventHandle
 {
 }
 
-void ConnectionManager::createConnection(boost::asio::ip::tcp::socket socket)
+void TcpConnectionRegistry::createConnection(boost::asio::ip::tcp::socket socket)
 {
 	// 종료 직전에 수락된 소켓. 소멸하면서 닫힘
 	if (m_state != State::Open) {
@@ -102,7 +102,7 @@ void ConnectionManager::createConnection(boost::asio::ip::tcp::socket socket)
 	connection->start();
 }
 
-void ConnectionManager::refuse(boost::asio::ip::tcp::socket socket)
+void TcpConnectionRegistry::refuse(boost::asio::ip::tcp::socket socket)
 {
 	++m_options.stats->refusedConnections;
 	++m_refusedSinceLog;
@@ -114,10 +114,10 @@ void ConnectionManager::refuse(boost::asio::ip::tcp::socket socket)
 	}
 
 	std::make_shared<RefusedSocket>(std::move(socket), m_options.closeTimeout)
-		->start(PacketManager::makeDisconnectPacket(DisconnectReason::ServerFull));
+		->start(control::disconnect(DisconnectReason::ServerFull));
 }
 
-void ConnectionManager::removeConnection(Connection::ConnectionId id)
+void TcpConnectionRegistry::removeConnection(Connection::ConnectionId id)
 {
 	if (m_connections.erase(id) > 0) {
 		engineLogDebug("Connection ", id, " removed (", m_connections.size(), " connected)");
@@ -125,7 +125,7 @@ void ConnectionManager::removeConnection(Connection::ConnectionId id)
 	notifyIfAllClosed();
 }
 
-void ConnectionManager::closeAll(std::shared_ptr<const Connection::Buffer> farewell, std::function<void()> onAllClosed)
+void TcpConnectionRegistry::closeAll(std::shared_ptr<const Connection::Buffer> farewell, std::function<void()> onAllClosed)
 {
 	if (m_state != State::Open) {
 		return;
@@ -148,7 +148,7 @@ void ConnectionManager::closeAll(std::shared_ptr<const Connection::Buffer> farew
 	notifyIfAllClosed();
 }
 
-void ConnectionManager::notifyIfAllClosed()
+void TcpConnectionRegistry::notifyIfAllClosed()
 {
 	if (m_state != State::Closing || !m_connections.empty()) {
 		return;

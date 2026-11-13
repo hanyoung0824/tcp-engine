@@ -20,7 +20,7 @@ public:
 
 	void start(const Connection& connection);
 
-	// 패킷 하나를 받아도 되는지. 넘으면 로그를 남기고 false
+	// 패킷 하나를 받아도 되는지. 넘으면 false
 	bool tryReceive(const Connection& connection);
 
 	void stop(const Connection& connection);

@@ -95,6 +95,7 @@ tcp_engine_add_layer(tcp_engine_network network
 	${SOURCE_DIR}/network/ConnectionOptions.hpp
 	${SOURCE_DIR}/network/HeartbeatMonitor.hpp
 	${SOURCE_DIR}/network/HeartbeatMonitor.cpp
+	${SOURCE_DIR}/network/NetworkStats.hpp
 	${SOURCE_DIR}/network/TcpConnection.hpp
 	${SOURCE_DIR}/network/TcpConnection.cpp
 )
@@ -123,6 +124,8 @@ tcp_engine_add_layer(tcp_engine_server server
 	${SOURCE_DIR}/server/ServerTransportFactory.cpp
 	${SOURCE_DIR}/server/SessionManager.hpp
 	${SOURCE_DIR}/server/SessionManager.cpp
+	${SOURCE_DIR}/server/StatsReporter.hpp
+	${SOURCE_DIR}/server/StatsReporter.cpp
 	${SOURCE_DIR}/server/ShutdownSignal.hpp
 	${SOURCE_DIR}/server/ShutdownSignal.cpp
 	${SOURCE_DIR}/server/ConnectionManager.hpp

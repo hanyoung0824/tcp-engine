@@ -19,10 +19,12 @@ namespace tcpengine
 {
 struct ConnectionEventHandler;
 class HeartbeatMonitor;
+struct NetworkStats;
 class PacketManager;
 class ReceiveRateLimiter;
 class ServerTransport;
 class SessionManager;
+class StatsReporter;
 class ShutdownSignal;
 
 // registerHandler()는 파생 클래스 생성자에서 run() 전에 호출
@@ -117,10 +119,12 @@ private:
 	// 멈춘 뒤 남은 핸들러가 다른 멤버를 잡고 있을 수 있으므로 가장 앞에 두어 가장 나중에 소멸
 	std::unique_ptr<boost::asio::io_context> m_ioContext;
 	std::unique_ptr<PacketManager> m_packetManager;
-	// 아래 다섯은 start() 동안만 있음
+	// 아래는 start() 동안만 있음
+	std::shared_ptr<NetworkStats> m_networkStats;
 	std::unique_ptr<HeartbeatMonitor> m_heartbeatMonitor;
 	std::unique_ptr<ReceiveRateLimiter> m_receiveRateLimiter;
 	std::unique_ptr<SessionManager> m_sessionManager;
+	std::unique_ptr<StatsReporter> m_statsReporter;
 	std::unique_ptr<ServerTransport> m_transport;
 	std::unique_ptr<ShutdownSignal> m_shutdownSignal;
 	const ServerSettings m_settings;

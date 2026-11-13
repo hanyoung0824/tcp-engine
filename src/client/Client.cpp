@@ -87,7 +87,8 @@ int Client::start()
 		engineLogError("Unsupported transport");
 		return 1;
 	}
-	m_heartbeatMonitor = std::make_unique<HeartbeatMonitor>(m_transport->getExecutor());
+	// 클라이언트는 통계를 보고하지 않으므로 쌓기만 함
+	m_heartbeatMonitor = std::make_unique<HeartbeatMonitor>(m_transport->getExecutor(), std::make_shared<NetworkStats>());
 
 	registerControlHandlers();
 
@@ -138,18 +139,17 @@ void Client::registerControlHandlers()
 
 std::shared_ptr<const ConnectionEventHandler> Client::makeConnectionEvents()
 {
-	auto connectionEvents = std::make_shared<ConnectionEventHandler>();
-	connectionEvents->onConnected = [this](const std::shared_ptr<Connection>& connection) {
-		onConnected(connection);
-	};
-	connectionEvents->onReceive = [this](const std::shared_ptr<Connection>& connection, std::span<const std::uint8_t> data) {
-		m_heartbeatMonitor->onReceived(*connection);
-		return m_packetManager->onReceive(connection, data);
-	};
-	connectionEvents->onDisconnected = [this](const std::shared_ptr<Connection>& connection) {
-		m_heartbeatMonitor->stop(*connection);
-		onDisconnected(connection);
-	};
-	return connectionEvents;
+	return std::make_shared<const ConnectionEventHandler>(
+		[this](const std::shared_ptr<Connection>& connection) {
+			onConnected(connection);
+		},
+		[this](const std::shared_ptr<Connection>& connection, std::span<const std::uint8_t> data) {
+			m_heartbeatMonitor->onReceived(*connection);
+			return m_packetManager->onReceive(connection, data);
+		},
+		[this](const std::shared_ptr<Connection>& connection) {
+			m_heartbeatMonitor->stop(*connection);
+			onDisconnected(connection);
+		});
 }
 }

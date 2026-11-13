@@ -34,6 +34,8 @@ struct ServerSettings
 	std::size_t sendQueueLimit = 0;
 	// 연결 하나가 초당 보낼 수 있는 패킷 수. 1초 분량까지는 몰아서 보내도 되며 넘으면 그 연결을 끊음
 	double receivePacketsPerSecond = 0;
+	// 서버 상태를 engine 로그에 남기는 간격. 0이면 남기지 않음
+	std::chrono::seconds statsInterval{ 0 };
 	LogSettings log;
 
 	// 틀리면 이유를 담은 std::invalid_argument를 던짐. 하위 설정도 함께 검사

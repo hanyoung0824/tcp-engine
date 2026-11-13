@@ -8,6 +8,7 @@
 #include "ReceiveRateLimiter.hpp"
 #include "ServerTransportFactory.hpp"
 #include "SessionManager.hpp"
+#include "StatsReporter.hpp"
 #include "ShutdownSignal.hpp"
 
 #include <boost/asio/io_context.hpp>
@@ -113,36 +114,43 @@ int Server::start()
 	registerControlHandlers();
 
 	// 다른 프로토콜은 settings.transport로 고름
-	m_transport = makeServerTransport(m_ioContext->get_executor(), m_settings, makeConnectionEvents(std::move(serverHello)));
+	m_networkStats = std::make_shared<NetworkStats>();
+	m_transport = makeServerTransport(m_ioContext->get_executor(), m_settings, makeConnectionEvents(std::move(serverHello)), m_networkStats);
 	if (!m_transport) {
 		engineLogError("Unsupported transport");
 		return 1;
 	}
 
-	m_heartbeatMonitor = std::make_unique<HeartbeatMonitor>(m_ioContext->get_executor());
+	m_heartbeatMonitor = std::make_unique<HeartbeatMonitor>(m_ioContext->get_executor(), m_networkStats);
 	m_receiveRateLimiter = std::make_unique<ReceiveRateLimiter>(m_settings.receivePacketsPerSecond);
 	// 넘으면 RST로 끊음. 연결이 닫히는 중이 되므로 남은 데이터는 잘못된 데이터로 따로 처리되지 않음
 	m_packetManager->setPacketFilter([this](const std::shared_ptr<Connection>& connection) {
 		if (m_receiveRateLimiter->tryReceive(*connection)) {
+			++m_networkStats->packetsIn;
 			return true;
 		}
+		++m_networkStats->receiveLimitResets;
 		connection->reset();
 		return false;
 	});
 	createSessionManager();
+	m_statsReporter = std::make_unique<StatsReporter>(m_ioContext->get_executor(), m_settings.statsInterval, m_networkStats, *m_sessionManager);
 
 	const bool started = m_transport->start();
 	if (started) {
 		m_shutdownSignal = std::make_unique<ShutdownSignal>(m_ioContext->get_executor(), [this] { stop(); });
+		m_statsReporter->start();
 		m_ioContext->run();
 		onStop();
 	}
 
 	m_shutdownSignal.reset();
+	m_statsReporter.reset();
 	m_transport.reset();
 	m_sessionManager.reset();
 	m_heartbeatMonitor.reset();
 	m_receiveRateLimiter.reset();
+	m_networkStats.reset();
 	return started ? 0 : 1;
 }
 
@@ -158,6 +166,7 @@ void Server::shutdown()
 {
 	engineLogInfo("Server shutting down");
 	m_shutdownSignal->cancel();
+	m_statsReporter->stop();
 	m_transport->stopAccepting();
 	// 세션을 먼저 끝내야 재접속 대기 타이머가 남지 않고, 응용이 onSessionEnded에서 보낸 패킷도 연결과 함께 전송됨
 	m_sessionManager->stop();
@@ -179,28 +188,28 @@ void Server::registerControlHandlers()
 
 std::shared_ptr<const ConnectionEventHandler> Server::makeConnectionEvents(std::shared_ptr<const Connection::Buffer> serverHello)
 {
-	auto connectionEvents = std::make_shared<ConnectionEventHandler>();
-
-	// 접속 직후 ServerHello로 하트비트 값을 알려 줌. 서버는 Ping을 보내지 않고 timeout만 검사함
-	connectionEvents->onConnected = [this, serverHello = std::move(serverHello)](const std::shared_ptr<Connection>& connection) {
-		connection->send(serverHello);
-		m_heartbeatMonitor->start(connection, m_settings.heartbeat, nullptr);
-		m_receiveRateLimiter->start(*connection);
-		onConnected(connection);
-	};
-	connectionEvents->onReceive = [this](const std::shared_ptr<Connection>& connection, std::span<const std::uint8_t> data) {
-		m_heartbeatMonitor->onReceived(*connection);
-		return m_packetManager->onReceive(connection, data);
-	};
-	connectionEvents->onDisconnected = [this](const std::shared_ptr<Connection>& connection) {
-		m_heartbeatMonitor->stop(*connection);
-		m_receiveRateLimiter->stop(*connection);
-		onDisconnected(connection);
-		if (m_sessionManager) {
-			m_sessionManager->onConnectionClosed(*connection);
-		}
-	};
-	return connectionEvents;
+	return std::make_shared<const ConnectionEventHandler>(
+		// 접속 직후 ServerHello로 하트비트 값을 알려 줌. 서버는 Ping을 보내지 않고 timeout만 검사함
+		[this, serverHello = std::move(serverHello)](const std::shared_ptr<Connection>& connection) {
+			connection->send(serverHello);
+			m_heartbeatMonitor->start(connection, m_settings.heartbeat, nullptr);
+			m_receiveRateLimiter->start(*connection);
+			++m_networkStats->connectionsOpened;
+			onConnected(connection);
+		},
+		[this](const std::shared_ptr<Connection>& connection, std::span<const std::uint8_t> data) {
+			m_heartbeatMonitor->onReceived(*connection);
+			return m_packetManager->onReceive(connection, data);
+		},
+		[this](const std::shared_ptr<Connection>& connection) {
+			m_heartbeatMonitor->stop(*connection);
+			m_receiveRateLimiter->stop(*connection);
+			++m_networkStats->connectionsClosed;
+			onDisconnected(connection);
+			if (m_sessionManager) {
+				m_sessionManager->onConnectionClosed(*connection);
+			}
+		});
 }
 
 void Server::createSessionManager()

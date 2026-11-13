@@ -6,6 +6,7 @@
 #include <boost/asio.hpp>
 
 #include <chrono>
+#include <cstddef>
 #include <functional>
 #include <memory>
 #include <string>
@@ -39,6 +40,11 @@ public:
 	std::shared_ptr<Session> start(const std::shared_ptr<Connection>& connection);
 
 	std::shared_ptr<Session> find(const Connection& connection) const;
+
+	std::size_t getSessionCount() const { return m_sessions.size(); }
+
+	// 연결이 끊겨 재접속을 기다리는 세션 수
+	std::size_t getDetachedCount() const { return m_sessions.size() - m_idsByConnection.size(); }
 
 	// 클라이언트의 Resume 요청. 결과는 SessionResumed 또는 ResumeFailed로 알림
 	void resume(const std::shared_ptr<Connection>& connection, const std::string& token);

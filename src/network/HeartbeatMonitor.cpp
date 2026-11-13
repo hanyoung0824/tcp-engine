@@ -16,8 +16,9 @@ HeartbeatMonitor::Entry::Entry(boost::asio::any_io_executor executor, const std:
 {
 }
 
-HeartbeatMonitor::HeartbeatMonitor(boost::asio::any_io_executor executor)
-	: m_executor(std::move(executor))
+HeartbeatMonitor::HeartbeatMonitor(boost::asio::any_io_executor executor, std::shared_ptr<NetworkStats> stats)
+	: m_executor(std::move(executor)),
+	m_stats(std::move(stats))
 {
 }
 
@@ -76,6 +77,7 @@ void HeartbeatMonitor::onTimer(Connection::ConnectionId id)
 	const auto idleTime = std::chrono::steady_clock::now() - entry.lastReceiveTime;
 	if (entry.settings.timeout.count() > 0 && idleTime >= entry.settings.timeout) {
 		engineLogWarning("Heartbeat timeout from ", connection->getAddress(), ", resetting");
+		++m_stats->heartbeatResets;
 		m_entries.erase(it);
 		// 응답 없는 상대라 정상 종료를 기다려도 소용없음
 		connection->reset();

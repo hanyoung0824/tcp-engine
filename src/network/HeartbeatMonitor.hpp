@@ -1,6 +1,7 @@
 #pragma once
 
 #include "tcpengine/network/Connection.hpp"
+#include "NetworkStats.hpp"
 #include "tcpengine/network/HeartbeatSettings.hpp"
 
 #include <boost/asio.hpp>
@@ -16,7 +17,8 @@ namespace tcpengine
 class HeartbeatMonitor
 {
 public:
-	explicit HeartbeatMonitor(boost::asio::any_io_executor executor);
+	// stats에는 하트비트로 끊은 횟수를 쌓음
+	HeartbeatMonitor(boost::asio::any_io_executor executor, std::shared_ptr<NetworkStats> stats);
 
 	HeartbeatMonitor(const HeartbeatMonitor&) = delete;
 	HeartbeatMonitor& operator=(const HeartbeatMonitor&) = delete;
@@ -50,6 +52,7 @@ private:
 
 private:
 	boost::asio::any_io_executor m_executor;
+	const std::shared_ptr<NetworkStats> m_stats;
 	std::unordered_map<Connection::ConnectionId, std::unique_ptr<Entry>> m_entries;
 };
 }

@@ -46,6 +46,9 @@ void ServerSettings::validate() const
 	if (receivePacketsPerSecond <= 0) {
 		throw std::invalid_argument("receiveLimit packetsPerSecond must be positive");
 	}
+	if (statsInterval.count() < 0) {
+		throw std::invalid_argument("statsIntervalSeconds must not be negative");
+	}
 	heartbeat.validate();
 	session.validate();
 	log.validate();
@@ -80,6 +83,7 @@ ServerSettings ServerSettings::fromJson(const nlohmann::json& file)
 		}
 		settings.sendQueueLimit = static_cast<std::size_t>(sendQueueLimitKB) * 1024;
 		settings.receivePacketsPerSecond = engine.at("receiveLimit").at("packetsPerSecond").get<double>();
+		settings.statsInterval = std::chrono::seconds(engine.at("statsIntervalSeconds").get<std::int64_t>());
 
 		settings.validate();
 	}

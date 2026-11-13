@@ -43,9 +43,7 @@ void TcpConnection::start()
 {
 	engineLogInfo("Connected: ", m_address);
 
-	if (m_handler->onConnected) {
-		m_handler->onConnected(shared_from_this());
-	}
+	m_handler->onConnected(shared_from_this());
 
 	// onConnected에서 close()했어도 상대가 끊는 것을 알아야 하므로 읽기는 시작함
 	if (m_state != State::Closed) {
@@ -61,12 +59,14 @@ void TcpConnection::send(std::shared_ptr<const Buffer> data)
 
 	if (m_options.sendQueueLimit && m_queuedBytes + data->size() > *m_options.sendQueueLimit) {
 		engineLogWarning("Send queue over ", *m_options.sendQueueLimit / 1024, "KB for ", m_address, ", resetting");
+		++m_options.stats->sendQueueResets;
 		reset();
 		return;
 	}
 
 	const bool writing = !m_writeQueue.empty();
 	m_queuedBytes += data->size();
+	m_options.stats->recordSendQueue(m_queuedBytes);
 	m_writeQueue.push_back(std::move(data));
 
 	if (!writing) {
@@ -133,9 +133,7 @@ void TcpConnection::finish(bool sendReset)
 	}
 	m_socket.close(ec);
 
-	if (m_handler->onDisconnected) {
-		m_handler->onDisconnected(shared_from_this());
-	}
+	m_handler->onDisconnected(shared_from_this());
 
 	if (m_onClosed) {
 		m_onClosed(m_id);
@@ -170,6 +168,8 @@ void TcpConnection::onRead(const boost::system::error_code& ec, std::size_t leng
 		abort();
 		return;
 	}
+
+	m_options.stats->bytesIn += length;
 
 	// 닫는 중에는 상대가 끊을 때까지 받은 데이터를 처리하지 않고 버림
 	if (m_state == State::Closing) {
@@ -243,7 +243,11 @@ void TcpConnection::onWrite(const boost::system::error_code& ec, std::size_t)
 		return;
 	}
 
-	m_queuedBytes -= m_writeQueue.front()->size();
+	const std::size_t written = m_writeQueue.front()->size();
+	++m_options.stats->packetsOut;
+	m_options.stats->bytesOut += written;
+	m_queuedBytes -= written;
+	m_options.stats->recordSendQueue(m_queuedBytes);
 	m_writeQueue.pop_front();
 	if (!m_writeQueue.empty()) {
 		startWrite();

@@ -14,11 +14,6 @@ ConnectionManager::ConnectionManager(std::shared_ptr<const ConnectionEventHandle
 
 void ConnectionManager::createConnection(boost::asio::ip::tcp::socket socket)
 {
-	if (!m_handler->onReceive) {
-		engineLogError("No receive handler registered, connection dropped");
-		return;
-	}
-
 	// 종료 직전에 수락된 소켓. 소멸하면서 닫힘
 	if (m_state != State::Open) {
 		engineLogDebug("Connection refused while shutting down");

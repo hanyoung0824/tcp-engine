@@ -8,7 +8,6 @@
 
 #include <atomic>
 #include <cstddef>
-#include <deque>
 #include <functional>
 #include <memory>
 #include <string>
@@ -47,6 +46,15 @@ public:
 	const std::string& getAddress() const override { return m_address; }
 
 private:
+	// 보낼 패킷 하나. 바이트를 소유하고, async_write가 버퍼 목록으로 읽을 때는 (주소, 길이)로 바뀜
+	// 바이트는 복사하지 않으므로 브로드캐스트 버퍼를 여러 연결이 함께 씀
+	struct OutgoingPacket
+	{
+		std::shared_ptr<const Buffer> data;
+
+		operator boost::asio::const_buffer() const { return boost::asio::buffer(*data); }
+	};
+
 	enum class State
 	{
 		Open,     // 주고받는 중
@@ -82,11 +90,10 @@ private:
 
 	Buffer m_receiveBuffer;
 	std::size_t m_receivedLength = 0;
-	// 보내려고 기다리는 패킷. 쓰는 중인 묶음이 있을 때만 쌓임
-	std::deque<std::shared_ptr<const Buffer>> m_writeQueue;
-	// 지금 한 번의 쓰기로 보내는 중인 묶음. 끝날 때까지 버퍼를 살려 둠
-	std::vector<std::shared_ptr<const Buffer>> m_writingPackets;
-	std::vector<boost::asio::const_buffer> m_writingBuffers;
+	// 보내려고 기다리는 패킷. 쓰는 중인 묶음이 있을 때만 쌓이고, 쓰기를 시작할 때 m_writingPackets와 맞바꿈
+	std::vector<OutgoingPacket> m_pendingPackets;
+	// 지금 한 번의 쓰기로 보내는 중인 묶음. async_write가 버퍼 목록으로 그대로 읽으므로 끝날 때까지 건드리지 않음
+	std::vector<OutgoingPacket> m_writingPackets;
 	// 대기 중인 것과 쓰는 중인 것을 합친, 아직 보내지 못한 바이트
 	std::size_t m_queuedBytes = 0;
 };

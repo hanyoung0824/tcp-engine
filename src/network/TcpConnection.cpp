@@ -16,9 +16,6 @@ namespace tcpengine
 namespace
 {
 	constexpr std::size_t receiveBufferSize = 64 * 1024;
-
-	// 한 번에 묶어 보낼 패킷 수. 큐가 아주 길어도 버퍼 목록이 한없이 커지지 않게 함
-	constexpr std::size_t maxBatchPackets = 256;
 }
 
 TcpConnection::TcpConnection(tcp::socket socket, std::shared_ptr<const ConnectionEventHandler> handler,
@@ -69,7 +66,7 @@ void TcpConnection::send(std::shared_ptr<const Buffer> data)
 
 	m_queuedBytes += data->size();
 	m_options.stats->recordSendQueue(m_queuedBytes);
-	m_writeQueue.push_back(std::move(data));
+	m_pendingPackets.push_back(OutgoingPacket{ std::move(data) });
 
 	if (m_writingPackets.empty()) {
 		startWrite();
@@ -225,15 +222,12 @@ void TcpConnection::onRead(const boost::system::error_code& ec, std::size_t leng
 
 void TcpConnection::startWrite()
 {
-	// 쌓인 패킷을 한 번의 쓰기로 묶어 시스템 호출 수를 줄임
-	const std::size_t count = std::min(m_writeQueue.size(), maxBatchPackets);
-	for (std::size_t i = 0; i < count; ++i) {
-		m_writingBuffers.push_back(asio::buffer(*m_writeQueue.front()));
-		m_writingPackets.push_back(std::move(m_writeQueue.front()));
-		m_writeQueue.pop_front();
-	}
+	// 쌓인 패킷을 한 번의 쓰기로 묶어 시스템 호출 수를 줄임. 맞바꾸기만 하므로 패킷을 옮기지 않음
+	// 전체 크기는 sendQueueLimit이 막고, 시스템 호출 한 번에 넘기는 개수는 Asio가 OS 한도에 맞춰 나눔
+	std::swap(m_pendingPackets, m_writingPackets);
 
-	asio::async_write(m_socket, m_writingBuffers,
+	// async_write는 버퍼 목록을 값으로 복사해 두므로, vector 대신 가리키기만 하는 span으로 넘김
+	asio::async_write(m_socket, std::span<const OutgoingPacket>(m_writingPackets),
 		[self = shared_from_this()](const boost::system::error_code& ec, std::size_t length) {
 			self->onWrite(ec, length);
 		});
@@ -258,9 +252,8 @@ void TcpConnection::onWrite(const boost::system::error_code& ec, std::size_t len
 	m_queuedBytes -= length;
 	m_options.stats->recordSendQueue(m_queuedBytes);
 	m_writingPackets.clear();
-	m_writingBuffers.clear();
 
-	if (!m_writeQueue.empty()) {
+	if (!m_pendingPackets.empty()) {
 		startWrite();
 	}
 	else if (m_state == State::Closing) {

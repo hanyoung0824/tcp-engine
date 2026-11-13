@@ -12,6 +12,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace tcpengine
 {
@@ -81,8 +82,12 @@ private:
 
 	Buffer m_receiveBuffer;
 	std::size_t m_receivedLength = 0;
+	// 보내려고 기다리는 패킷. 쓰는 중인 묶음이 있을 때만 쌓임
 	std::deque<std::shared_ptr<const Buffer>> m_writeQueue;
-	// m_writeQueue에서 아직 보내지 못한 바이트 합
+	// 지금 한 번의 쓰기로 보내는 중인 묶음. 끝날 때까지 버퍼를 살려 둠
+	std::vector<std::shared_ptr<const Buffer>> m_writingPackets;
+	std::vector<boost::asio::const_buffer> m_writingBuffers;
+	// 대기 중인 것과 쓰는 중인 것을 합친, 아직 보내지 못한 바이트
 	std::size_t m_queuedBytes = 0;
 };
 }

@@ -16,6 +16,9 @@ namespace tcpengine
 namespace
 {
 	constexpr std::size_t receiveBufferSize = 64 * 1024;
+
+	// 한 번에 묶어 보낼 패킷 수. 큐가 아주 길어도 버퍼 목록이 한없이 커지지 않게 함
+	constexpr std::size_t maxBatchPackets = 256;
 }
 
 TcpConnection::TcpConnection(tcp::socket socket, std::shared_ptr<const ConnectionEventHandler> handler,
@@ -64,12 +67,11 @@ void TcpConnection::send(std::shared_ptr<const Buffer> data)
 		return;
 	}
 
-	const bool writing = !m_writeQueue.empty();
 	m_queuedBytes += data->size();
 	m_options.stats->recordSendQueue(m_queuedBytes);
 	m_writeQueue.push_back(std::move(data));
 
-	if (!writing) {
+	if (m_writingPackets.empty()) {
 		startWrite();
 	}
 }
@@ -95,7 +97,7 @@ void TcpConnection::close()
 		self->reset();
 	});
 
-	if (m_writeQueue.empty()) {
+	if (m_writingPackets.empty()) {
 		shutdownSend();
 	}
 }
@@ -223,13 +225,21 @@ void TcpConnection::onRead(const boost::system::error_code& ec, std::size_t leng
 
 void TcpConnection::startWrite()
 {
-	asio::async_write(m_socket, asio::buffer(*m_writeQueue.front()),
+	// 쌓인 패킷을 한 번의 쓰기로 묶어 시스템 호출 수를 줄임
+	const std::size_t count = std::min(m_writeQueue.size(), maxBatchPackets);
+	for (std::size_t i = 0; i < count; ++i) {
+		m_writingBuffers.push_back(asio::buffer(*m_writeQueue.front()));
+		m_writingPackets.push_back(std::move(m_writeQueue.front()));
+		m_writeQueue.pop_front();
+	}
+
+	asio::async_write(m_socket, m_writingBuffers,
 		[self = shared_from_this()](const boost::system::error_code& ec, std::size_t length) {
 			self->onWrite(ec, length);
 		});
 }
 
-void TcpConnection::onWrite(const boost::system::error_code& ec, std::size_t)
+void TcpConnection::onWrite(const boost::system::error_code& ec, std::size_t length)
 {
 	if (m_state == State::Closed) {
 		return;
@@ -243,12 +253,13 @@ void TcpConnection::onWrite(const boost::system::error_code& ec, std::size_t)
 		return;
 	}
 
-	const std::size_t written = m_writeQueue.front()->size();
-	++m_options.stats->packetsOut;
-	m_options.stats->bytesOut += written;
-	m_queuedBytes -= written;
+	m_options.stats->packetsOut += m_writingPackets.size();
+	m_options.stats->bytesOut += length;
+	m_queuedBytes -= length;
 	m_options.stats->recordSendQueue(m_queuedBytes);
-	m_writeQueue.pop_front();
+	m_writingPackets.clear();
+	m_writingBuffers.clear();
+
 	if (!m_writeQueue.empty()) {
 		startWrite();
 	}

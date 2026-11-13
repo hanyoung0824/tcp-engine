@@ -90,6 +90,11 @@ void PacketManager::setControlHandler(ControlType type, ControlHandler handler)
 	m_controlHandlers[static_cast<std::uint16_t>(type)] = std::move(handler);
 }
 
+void PacketManager::setPacketFilter(PacketFilter filter)
+{
+	m_packetFilter = std::move(filter);
+}
+
 std::optional<std::size_t> PacketManager::onReceive(const std::shared_ptr<Connection>& connection,
 	std::span<const std::uint8_t> data) const
 {
@@ -114,6 +119,10 @@ std::optional<std::size_t> PacketManager::onReceive(const std::shared_ptr<Connec
 
 		if (rest.size() < size) {
 			break;
+		}
+
+		if (m_packetFilter && !m_packetFilter(connection)) {
+			return std::nullopt;
 		}
 
 		PacketReader body(rest.subspan(packetHeaderSize, size - packetHeaderSize));

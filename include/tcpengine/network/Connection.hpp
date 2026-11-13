@@ -41,6 +41,10 @@ public:
 	// closeTimeout 안에 끝나지 않으면 남은 데이터를 버리고 닫음. onDisconnected는 실제로 닫힐 때 불림
 	virtual void close() = 0;
 
+	// 보낼 데이터를 버리고 RST로 바로 끊음. 응답 없는 상대나 악성 상대를 기다리지 않고 끊을 때 씀
+	// onDisconnected는 지금 처리 중인 일이 끝난 뒤 불림
+	virtual void reset() = 0;
+
 	// close()가 불린 뒤로 true
 	virtual bool isClosed() const = 0;
 

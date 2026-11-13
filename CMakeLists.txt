@@ -53,11 +53,13 @@ tcp_engine_add_layer(tcp_engine_utility utility
 	${INCLUDE_DIR}/utility/JsonConfig.hpp
 	${INCLUDE_DIR}/utility/Log.hpp
 	${INCLUDE_DIR}/utility/LogSettings.hpp
+	${INCLUDE_DIR}/utility/TokenBucket.hpp
 	${SOURCE_DIR}/utility/JsonConfig.cpp
 	${SOURCE_DIR}/utility/EngineLog.hpp
 	${SOURCE_DIR}/utility/Logger.hpp
 	${SOURCE_DIR}/utility/Logger.cpp
 	${SOURCE_DIR}/utility/LogSettings.cpp
+	${SOURCE_DIR}/utility/TokenBucket.cpp
 )
 add_library(tcp::utility ALIAS tcp_engine_utility)
 # spdlog는 로거 구현에만 쓰고 공개 헤더에는 드러내지 않음
@@ -87,6 +89,8 @@ tcp_engine_add_layer(tcp_engine_network network
 	${SOURCE_DIR}/network/PacketHeader.hpp
 	${SOURCE_DIR}/network/PacketManager.hpp
 	${SOURCE_DIR}/network/PacketManager.cpp
+	${SOURCE_DIR}/network/ReceiveRateLimiter.hpp
+	${SOURCE_DIR}/network/ReceiveRateLimiter.cpp
 	${SOURCE_DIR}/network/ConnectionEventHandler.hpp
 	${SOURCE_DIR}/network/ConnectionOptions.hpp
 	${SOURCE_DIR}/network/HeartbeatMonitor.hpp

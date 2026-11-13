@@ -20,6 +20,7 @@ namespace tcpengine
 struct ConnectionEventHandler;
 class HeartbeatMonitor;
 class PacketManager;
+class ReceiveRateLimiter;
 class ServerTransport;
 class SessionManager;
 class ShutdownSignal;
@@ -116,8 +117,9 @@ private:
 	// 멈춘 뒤 남은 핸들러가 다른 멤버를 잡고 있을 수 있으므로 가장 앞에 두어 가장 나중에 소멸
 	std::unique_ptr<boost::asio::io_context> m_ioContext;
 	std::unique_ptr<PacketManager> m_packetManager;
-	// 아래 넷은 start() 동안만 있음
+	// 아래 다섯은 start() 동안만 있음
 	std::unique_ptr<HeartbeatMonitor> m_heartbeatMonitor;
+	std::unique_ptr<ReceiveRateLimiter> m_receiveRateLimiter;
 	std::unique_ptr<SessionManager> m_sessionManager;
 	std::unique_ptr<ServerTransport> m_transport;
 	std::unique_ptr<ShutdownSignal> m_shutdownSignal;

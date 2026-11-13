@@ -29,6 +29,9 @@ public:
 	// 본문(ControlType 다음부터)을 읽어 처리. 본문이 잘못되면 false
 	using ControlHandler = std::function<bool(const std::shared_ptr<Connection>& connection, PacketReader& body)>;
 
+	// 패킷 하나를 처리하기 전에 부름. false면 그 패킷을 처리하지 않고 연결을 끊음
+	using PacketFilter = std::function<bool(const std::shared_ptr<Connection>& connection)>;
+
 	static std::shared_ptr<const Connection::Buffer> makeControlPacket(ControlType type);
 
 	static std::shared_ptr<const Connection::Buffer> makeControlPacket(ControlType type, std::string_view text);
@@ -53,6 +56,8 @@ public:
 	// 엔진이 직접 처리하지 않는 제어 패킷(세션 등)을 받을 곳. 설정하지 않은 종류는 잘못된 패킷으로 처리함
 	void setControlHandler(ControlType type, ControlHandler handler);
 
+	void setPacketFilter(PacketFilter filter);
+
 	std::optional<std::size_t> onReceive(const std::shared_ptr<Connection>& connection,
 		std::span<const std::uint8_t> data) const;
 
@@ -65,5 +70,6 @@ private:
 private:
 	std::unordered_map<std::uint16_t, detail::PacketDispatcher> m_dispatchers;
 	std::unordered_map<std::uint16_t, ControlHandler> m_controlHandlers;
+	PacketFilter m_packetFilter;
 };
 }

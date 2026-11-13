@@ -18,6 +18,10 @@ struct HeartbeatSettings
 		if (interval.count() < 0 || timeout.count() < 0) {
 			throw std::invalid_argument("heartbeat values must not be negative");
 		}
+		// interval이 0이면 하트비트가 돌지 않아 timeout 검사도 하지 않으므로 설정 실수로 봄
+		if (interval.count() == 0 && timeout.count() != 0) {
+			throw std::invalid_argument("heartbeat timeout needs a positive interval");
+		}
 		if (timeout.count() != 0 && timeout <= interval) {
 			throw std::invalid_argument("heartbeat timeout must be 0 or longer than interval");
 		}

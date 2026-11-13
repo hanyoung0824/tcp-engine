@@ -5,6 +5,7 @@
 #include "HeartbeatMonitor.hpp"
 #include "Logger.hpp"
 #include "PacketManager.hpp"
+#include "ReceiveRateLimiter.hpp"
 #include "ServerTransportFactory.hpp"
 #include "SessionManager.hpp"
 #include "ShutdownSignal.hpp"
@@ -119,6 +120,15 @@ int Server::start()
 	}
 
 	m_heartbeatMonitor = std::make_unique<HeartbeatMonitor>(m_ioContext->get_executor());
+	m_receiveRateLimiter = std::make_unique<ReceiveRateLimiter>(m_settings.receivePacketsPerSecond);
+	// 넘으면 RST로 끊음. 연결이 닫히는 중이 되므로 남은 데이터는 잘못된 데이터로 따로 처리되지 않음
+	m_packetManager->setPacketFilter([this](const std::shared_ptr<Connection>& connection) {
+		if (m_receiveRateLimiter->tryReceive(*connection)) {
+			return true;
+		}
+		connection->reset();
+		return false;
+	});
 	createSessionManager();
 
 	const bool started = m_transport->start();
@@ -132,6 +142,7 @@ int Server::start()
 	m_transport.reset();
 	m_sessionManager.reset();
 	m_heartbeatMonitor.reset();
+	m_receiveRateLimiter.reset();
 	return started ? 0 : 1;
 }
 
@@ -174,6 +185,7 @@ std::shared_ptr<const ConnectionEventHandler> Server::makeConnectionEvents(std::
 	connectionEvents->onConnected = [this, serverHello = std::move(serverHello)](const std::shared_ptr<Connection>& connection) {
 		connection->send(serverHello);
 		m_heartbeatMonitor->start(connection, m_settings.heartbeat, nullptr);
+		m_receiveRateLimiter->start(*connection);
 		onConnected(connection);
 	};
 	connectionEvents->onReceive = [this](const std::shared_ptr<Connection>& connection, std::span<const std::uint8_t> data) {
@@ -182,6 +194,7 @@ std::shared_ptr<const ConnectionEventHandler> Server::makeConnectionEvents(std::
 	};
 	connectionEvents->onDisconnected = [this](const std::shared_ptr<Connection>& connection) {
 		m_heartbeatMonitor->stop(*connection);
+		m_receiveRateLimiter->stop(*connection);
 		onDisconnected(connection);
 		if (m_sessionManager) {
 			m_sessionManager->onConnectionClosed(*connection);

@@ -32,6 +32,8 @@ struct ServerSettings
 	std::chrono::seconds closeTimeout{ 5 };
 	// 연결 하나에 아직 보내지 못한 바이트의 상한. 받는 쪽이 따라오지 못해 넘으면 그 연결을 끊음
 	std::size_t sendQueueLimit = 0;
+	// 연결 하나가 초당 보낼 수 있는 패킷 수. 1초 분량까지는 몰아서 보내도 되며 넘으면 그 연결을 끊음
+	double receivePacketsPerSecond = 0;
 	LogSettings log;
 
 	// 틀리면 이유를 담은 std::invalid_argument를 던짐. 하위 설정도 함께 검사

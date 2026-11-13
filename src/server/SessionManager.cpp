@@ -41,9 +41,12 @@ public:
 
 	std::shared_ptr<Connection> getConnection() const override { return m_connection; }
 
+	// end()가 끝난 세션. 응용이 들고 있다가 close()를 불러도 아무 일도 하지 않음
+	bool isEnded() const { return m_owner == nullptr; }
+
 	void close() override
 	{
-		if (m_owner) {
+		if (!isEnded()) {
 			m_owner->end(*this, SessionEndReason::Closed);
 		}
 	}
@@ -55,7 +58,7 @@ private:
 	const std::string m_token;
 	std::shared_ptr<Connection> m_connection;
 	boost::asio::steady_timer m_expiryTimer;
-	// 끝난 세션은 nullptr. 응용이 들고 있다가 close()를 불러도 아무 일도 하지 않음
+	// end()에서 nullptr로 바꿈
 	SessionManager* m_owner;
 };
 
@@ -117,7 +120,7 @@ void SessionManager::resume(const std::shared_ptr<Connection>& connection, const
 	}
 
 	const std::shared_ptr<ServerSession> session = m_sessions.at(idIt->second);
-	if (session->m_connection) {
+	if (session->isConnected()) {
 		// 이전 연결이 끊긴 걸 아직 모르는 경우. 이전 연결을 버리고 새 연결로 넘김
 		const std::shared_ptr<Connection> previous = std::move(session->m_connection);
 		m_idsByConnection.erase(previous->getId());
@@ -156,7 +159,7 @@ void SessionManager::onConnectionClosed(const Connection& connection)
 	session->m_expiryTimer.expires_after(m_resumeTimeout);
 	session->m_expiryTimer.async_wait([this, weakSession = std::weak_ptr<ServerSession>(session)](const boost::system::error_code& ec) {
 		const std::shared_ptr<ServerSession> expired = weakSession.lock();
-		if (ec || !expired || expired->m_connection) {
+		if (ec || !expired || expired->isConnected()) {
 			return;
 		}
 		engineLogInfo("Session ", expired->m_id, " expired");
@@ -194,7 +197,7 @@ void SessionManager::attach(ServerSession& session, const std::shared_ptr<Connec
 
 void SessionManager::end(ServerSession& session, SessionEndReason reason)
 {
-	if (!session.m_owner) {
+	if (session.isEnded()) {
 		return;
 	}
 	session.m_owner = nullptr;

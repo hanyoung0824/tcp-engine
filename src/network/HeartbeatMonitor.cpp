@@ -75,9 +75,10 @@ void HeartbeatMonitor::onTimer(Connection::ConnectionId id)
 
 	const auto idleTime = std::chrono::steady_clock::now() - entry.lastReceiveTime;
 	if (entry.settings.timeout.count() > 0 && idleTime >= entry.settings.timeout) {
-		engineLogWarning("Heartbeat timeout from ", connection->getAddress(), ", closing");
+		engineLogWarning("Heartbeat timeout from ", connection->getAddress(), ", resetting");
 		m_entries.erase(it);
-		connection->close();
+		// 응답 없는 상대라 정상 종료를 기다려도 소용없음
+		connection->reset();
 		return;
 	}
 

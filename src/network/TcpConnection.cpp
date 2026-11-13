@@ -48,22 +48,20 @@ void TcpConnection::start()
 	}
 
 	// onConnected에서 close()했어도 상대가 끊는 것을 알아야 하므로 읽기는 시작함
-	if (!m_finished) {
+	if (m_state != State::Closed) {
 		startRead();
 	}
 }
 
 void TcpConnection::send(std::shared_ptr<const Buffer> data)
 {
-	if (m_closed || !data) {
+	if (m_state != State::Open || !data) {
 		return;
 	}
 
 	if (m_options.sendQueueLimit && m_queuedBytes + data->size() > *m_options.sendQueueLimit) {
-		engineLogWarning("Send queue over ", *m_options.sendQueueLimit / 1024, "KB for ", m_address, ", closing");
-		// 브로드캐스트처럼 연결 목록을 도는 중에 불릴 수 있어, 그 목록을 바꾸는 onDisconnected는 나중에 부름
-		m_closed = true;
-		asio::post(m_socket.get_executor(), [self = shared_from_this()] { self->reset(); });
+		engineLogWarning("Send queue over ", *m_options.sendQueueLimit / 1024, "KB for ", m_address, ", resetting");
+		reset();
 		return;
 	}
 
@@ -78,7 +76,8 @@ void TcpConnection::send(std::shared_ptr<const Buffer> data)
 
 void TcpConnection::close()
 {
-	if (m_closed.exchange(true)) {
+	State expected = State::Open;
+	if (!m_state.compare_exchange_strong(expected, State::Closing)) {
 		return;
 	}
 
@@ -89,7 +88,7 @@ void TcpConnection::close()
 
 	m_closeTimer.expires_after(m_options.closeTimeout);
 	m_closeTimer.async_wait([self = shared_from_this()](const boost::system::error_code& ec) {
-		if (ec || self->m_finished) {
+		if (ec || self->m_state == State::Closed) {
 			return;
 		}
 		engineLogWarning("Close timed out for ", self->m_address, ", resetting");
@@ -108,16 +107,20 @@ void TcpConnection::abort()
 
 void TcpConnection::reset()
 {
-	finish(true);
+	if (m_state == State::Closed) {
+		return;
+	}
+	m_state = State::Closing;
+	// 브로드캐스트처럼 연결 목록을 도는 중에 불릴 수 있어, 그 목록을 바꾸는 onDisconnected는 나중에 부름
+	asio::post(m_socket.get_executor(), [self = shared_from_this()] { self->finish(true); });
 }
 
 void TcpConnection::finish(bool sendReset)
 {
-	if (m_finished) {
+	if (m_state == State::Closed) {
 		return;
 	}
-	m_finished = true;
-	m_closed = true;
+	m_state = State::Closed;
 	m_closeTimer.cancel();
 
 	boost::system::error_code ec;
@@ -150,12 +153,12 @@ void TcpConnection::startRead()
 
 void TcpConnection::onRead(const boost::system::error_code& ec, std::size_t length)
 {
-	if (m_finished) {
+	if (m_state == State::Closed) {
 		return;
 	}
 
 	if (ec) {
-		if (m_closed) {
+		if (m_state == State::Closing) {
 			engineLogDebug("Closed: ", m_address);
 		}
 		else if (ec == asio::error::eof) {
@@ -169,7 +172,7 @@ void TcpConnection::onRead(const boost::system::error_code& ec, std::size_t leng
 	}
 
 	// 닫는 중에는 상대가 끊을 때까지 받은 데이터를 처리하지 않고 버림
-	if (m_closed) {
+	if (m_state == State::Closing) {
 		m_receivedLength = 0;
 		startRead();
 		return;
@@ -180,11 +183,11 @@ void TcpConnection::onRead(const boost::system::error_code& ec, std::size_t leng
 	const std::optional<std::size_t> result = m_handler->onReceive(shared_from_this(),
 		std::span<const std::uint8_t>(m_receiveBuffer.data(), m_receivedLength));
 
-	if (m_finished) {
+	if (m_state == State::Closed) {
 		return;
 	}
 
-	if (m_closed) {
+	if (m_state == State::Closing) {
 		m_receivedLength = 0;
 		startRead();
 		return;
@@ -228,7 +231,7 @@ void TcpConnection::startWrite()
 
 void TcpConnection::onWrite(const boost::system::error_code& ec, std::size_t)
 {
-	if (m_finished) {
+	if (m_state == State::Closed) {
 		return;
 	}
 
@@ -245,7 +248,7 @@ void TcpConnection::onWrite(const boost::system::error_code& ec, std::size_t)
 	if (!m_writeQueue.empty()) {
 		startWrite();
 	}
-	else if (m_closed) {
+	else if (m_state == State::Closing) {
 		shutdownSend();
 	}
 }

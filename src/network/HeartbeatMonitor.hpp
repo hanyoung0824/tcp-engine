@@ -21,7 +21,7 @@ public:
 	HeartbeatMonitor(const HeartbeatMonitor&) = delete;
 	HeartbeatMonitor& operator=(const HeartbeatMonitor&) = delete;
 
-	// interval마다 pingData를 보내고(null이면 안 보냄) timeout 동안 받은 게 없으면 연결을 닫음
+	// interval마다 pingData를 보내고(null이면 안 보냄) timeout 동안 받은 게 없으면 연결을 RST로 끊음
 	// interval이 0이면 아무것도 하지 않음. 이미 돌고 있으면 새 값으로 다시 시작
 	void start(const std::shared_ptr<Connection>& connection, const HeartbeatSettings& settings,
 		std::shared_ptr<const Connection::Buffer> pingData);

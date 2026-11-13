@@ -43,6 +43,9 @@ void ServerSettings::validate() const
 	if (sendQueueLimit == 0) {
 		throw std::invalid_argument("sendQueueLimitKB must be positive");
 	}
+	if (receivePacketsPerSecond <= 0) {
+		throw std::invalid_argument("receiveLimit packetsPerSecond must be positive");
+	}
 	heartbeat.validate();
 	session.validate();
 	log.validate();
@@ -76,6 +79,7 @@ ServerSettings ServerSettings::fromJson(const nlohmann::json& file)
 			throw std::invalid_argument("sendQueueLimitKB must be positive");
 		}
 		settings.sendQueueLimit = static_cast<std::size_t>(sendQueueLimitKB) * 1024;
+		settings.receivePacketsPerSecond = engine.at("receiveLimit").at("packetsPerSecond").get<double>();
 
 		settings.validate();
 	}

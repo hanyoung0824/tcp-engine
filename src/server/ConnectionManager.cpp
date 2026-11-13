@@ -20,7 +20,7 @@ void ConnectionManager::createConnection(boost::asio::ip::tcp::socket socket)
 	}
 
 	// 종료 직전에 수락된 소켓. 소멸하면서 닫힘
-	if (m_closingAll) {
+	if (m_state != State::Open) {
 		engineLogDebug("Connection refused while shutting down");
 		return;
 	}
@@ -45,7 +45,10 @@ void ConnectionManager::removeConnection(Connection::ConnectionId id)
 
 void ConnectionManager::closeAll(std::function<void()> onAllClosed)
 {
-	m_closingAll = true;
+	if (m_state != State::Open) {
+		return;
+	}
+	m_state = State::Closing;
 	m_onAllClosed = std::move(onAllClosed);
 
 	// 연결이 닫히면 removeConnection()이 목록을 바꾸므로 복사해 두고 닫음. 연결은 닫힐 때까지 목록에 남음
@@ -64,12 +67,14 @@ void ConnectionManager::closeAll(std::function<void()> onAllClosed)
 
 void ConnectionManager::notifyIfAllClosed()
 {
-	if (!m_closingAll || !m_connections.empty() || !m_onAllClosed) {
+	if (m_state != State::Closing || !m_connections.empty()) {
 		return;
 	}
 	engineLogInfo("All connections closed");
+	m_state = State::Closed;
 	const std::function<void()> onAllClosed = std::move(m_onAllClosed);
-	m_onAllClosed = nullptr;
-	onAllClosed();
+	if (onAllClosed) {
+		onAllClosed();
+	}
 }
 }

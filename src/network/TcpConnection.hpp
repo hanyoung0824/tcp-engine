@@ -38,14 +38,21 @@ public:
 	// 남은 데이터를 버리고 바로 닫음. 오류나 잘못된 데이터처럼 기다릴 이유가 없을 때 씀
 	void abort();
 
-	// abort()에 더해 커널에 남은 데이터까지 버리고 RST로 끊음. 받지 않는 상대를 끊을 때 씀
-	void reset();
+	// abort()에 더해 커널에 남은 데이터까지 버리고 RST로 끊음
+	void reset() override;
 
-	bool isClosed() const override { return m_closed.load(); }
+	bool isClosed() const override { return m_state != State::Open; }
 	ConnectionId getId() const override { return m_id; }
 	const std::string& getAddress() const override { return m_address; }
 
 private:
+	enum class State
+	{
+		Open,     // 주고받는 중
+		Closing,  // close()나 reset()이 불림. 더 보내지 않고 받은 것은 버림
+		Closed,   // 소켓을 닫고 onDisconnected까지 마침
+	};
+
 	void startRead();
 
 	void onRead(const boost::system::error_code& ec, std::size_t length);
@@ -65,10 +72,8 @@ private:
 	const std::shared_ptr<const ConnectionEventHandler> m_handler;
 	const ConnectionId m_id;
 	std::string m_address;
-	// close()가 불린 뒤로 true. 닫는 중에도 더 보내거나 받은 패킷을 처리하지 않음
-	std::atomic<bool> m_closed{ false };
-	// 소켓을 실제로 닫고 onDisconnected까지 마침
-	bool m_finished = false;
+	// 바꾸는 것은 네트워크 스레드뿐이지만 isClosed()는 어느 스레드에서나 읽으므로 atomic
+	std::atomic<State> m_state{ State::Open };
 	const ConnectionOptions m_options;
 	boost::asio::steady_timer m_closeTimer;
 

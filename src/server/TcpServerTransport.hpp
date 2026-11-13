@@ -16,7 +16,7 @@ namespace tcpengine
 class TcpServerTransport final : public ServerTransport
 {
 public:
-	TcpServerTransport(boost::asio::any_io_executor executor, unsigned short port, ConnectionOptions connectionOptions,
+	TcpServerTransport(boost::asio::any_io_executor executor, unsigned short port, ConnectionOptions connectionOptions, std::size_t maxConnections,
 		std::shared_ptr<const ConnectionEventHandler> handler);
 
 	TcpServerTransport(const TcpServerTransport&) = delete;
@@ -26,7 +26,7 @@ public:
 
 	void stopAccepting() override;
 
-	void closeAll(std::function<void()> onAllClosed) override;
+	void closeAll(std::shared_ptr<const Connection::Buffer> farewell, std::function<void()> onAllClosed) override;
 
 private:
 	ConnectionManager m_connectionManager;

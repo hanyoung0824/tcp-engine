@@ -24,6 +24,12 @@ void ClientSettings::validate() const
 	if (closeTimeout.count() < 0) {
 		throw std::invalid_argument("closeTimeout must not be negative");
 	}
+	if (connectTimeout.count() <= 0) {
+		throw std::invalid_argument("connectTimeoutSeconds must be positive");
+	}
+	if (reconnectMaxDelay.count() < 0) {
+		throw std::invalid_argument("reconnectMaxDelaySeconds must not be negative");
+	}
 	log.validate();
 }
 
@@ -47,6 +53,8 @@ ClientSettings ClientSettings::fromJson(const nlohmann::json& file)
 		}
 		settings.port = static_cast<unsigned short>(port);
 		settings.closeTimeout = std::chrono::seconds(engine.at("closeTimeout").get<std::int64_t>());
+		settings.connectTimeout = std::chrono::seconds(engine.at("connectTimeoutSeconds").get<std::int64_t>());
+		settings.reconnectMaxDelay = std::chrono::seconds(engine.at("reconnectMaxDelaySeconds").get<std::int64_t>());
 		settings.validate();
 	}
 	catch (const std::exception& e) {

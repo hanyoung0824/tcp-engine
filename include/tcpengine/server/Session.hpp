@@ -11,8 +11,9 @@ namespace tcpengine
 {
 enum class SessionEndReason
 {
-	Closed,         // 응용이 Session::close()를 부름 (로그아웃, 강퇴)
-	Expired,        // 끊긴 뒤 resumeTimeout 안에 재접속하지 않음 (0이면 끊기는 즉시)
+	Closed,         // 응용이 Session::close()나 reset()을 부름 (강퇴 등)
+	LoggedOut,      // 클라이언트가 스스로 나감
+	Expired,      // 끊긴 뒤 resumeTimeout 안에 재접속하지 않음 (0이면 끊기는 즉시)
 	ServerStopped,  // 서버 종료
 };
 
@@ -56,8 +57,11 @@ public:
 		return true;
 	}
 
-	// 재접속을 기다리지 않고 바로 끝냄 (로그아웃, 강퇴). 붙어 있는 연결도 닫음
+	// 재접속을 기다리지 않고 바로 끝냄 (강퇴 등). 클라이언트에 Kicked를 알리고 붙어 있는 연결을 정상 종료함
 	virtual void close() = 0;
+
+	// close()처럼 끝내되 알리지 않고 연결을 RST로 바로 끊음. 악성 클라이언트를 기다리지 않고 내보낼 때 씀
+	virtual void reset() = 0;
 
 protected:
 	Session() = default;

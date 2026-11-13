@@ -25,6 +25,10 @@ struct NetworkStats
 	std::uint64_t heartbeatResets = 0;
 	// 초당 받을 수 있는 패킷 수를 넘음
 	std::uint64_t receiveLimitResets = 0;
+	// 접속한 뒤 정해진 시간 안에 로그인하지 않음
+	std::uint64_t loginTimeouts = 0;
+	// 최대 접속 수에 도달해 받지 않은 연결
+	std::uint64_t refusedConnections = 0;
 
 	// 보고 구간 동안 본 연결별 쓰기 큐 크기 중 가장 큰 값. 넣을 때와 보낼 때마다 확인하며 보고하는 쪽이 매번 0으로 되돌림
 	std::size_t peakSendQueueBytes = 0;

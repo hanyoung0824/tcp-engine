@@ -71,6 +71,41 @@ std::optional<ServerHello> PacketManager::readServerHello(PacketReader& body)
 	return hello;
 }
 
+std::shared_ptr<const Connection::Buffer> PacketManager::makeClientHelloPacket(const ClientHello& hello)
+{
+	PacketWriter writer(controlPacketId);
+	writer.writeUInt16(static_cast<std::uint16_t>(ControlType::ClientHello));
+	writer.writeUInt16(hello.engineVersion);
+	writer.writeUInt16(hello.appVersion);
+	return std::make_shared<const Connection::Buffer>(*writer.finish());
+}
+
+std::optional<ClientHello> PacketManager::readClientHello(PacketReader& body)
+{
+	ClientHello hello;
+	if (!body.readUInt16(hello.engineVersion) || !body.readUInt16(hello.appVersion) || !body.isEnd()) {
+		return std::nullopt;
+	}
+	return hello;
+}
+
+std::shared_ptr<const Connection::Buffer> PacketManager::makeDisconnectPacket(DisconnectReason reason)
+{
+	PacketWriter writer(controlPacketId);
+	writer.writeUInt16(static_cast<std::uint16_t>(ControlType::Disconnect));
+	writer.writeUInt16(static_cast<std::uint16_t>(reason));
+	return std::make_shared<const Connection::Buffer>(*writer.finish());
+}
+
+std::optional<DisconnectReason> PacketManager::readDisconnect(PacketReader& body)
+{
+	std::uint16_t reason = 0;
+	if (!body.readUInt16(reason) || !body.isEnd()) {
+		return std::nullopt;
+	}
+	return static_cast<DisconnectReason>(reason);
+}
+
 bool PacketManager::addDispatcher(std::uint16_t id, detail::PacketDispatcher dispatcher)
 {
 	if (id < firstAppPacketId) {
@@ -121,7 +156,7 @@ std::optional<std::size_t> PacketManager::onReceive(const std::shared_ptr<Connec
 			break;
 		}
 
-		if (m_packetFilter && !m_packetFilter(connection)) {
+		if (m_packetFilter && !m_packetFilter(connection, id)) {
 			return std::nullopt;
 		}
 

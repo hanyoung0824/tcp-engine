@@ -6,20 +6,23 @@
 
 namespace tcpengine
 {
-// SIGINT, SIGTERM을 받으면 onSignal을 한 번 부름. 네트워크 스레드에서 사용
+// SIGINT, SIGTERM을 받을 때마다 알림. 첫 번째는 onShutdown(정상 종료), 그다음은 onForce(기다리지 않고 종료)
+// 네트워크 스레드에서 사용
 class ShutdownSignal
 {
 public:
-	ShutdownSignal(boost::asio::any_io_executor executor, std::function<void()> onSignal);
+	ShutdownSignal(boost::asio::any_io_executor executor, std::function<void()> onShutdown, std::function<void()> onForce);
 
 	ShutdownSignal(const ShutdownSignal&) = delete;
 	ShutdownSignal& operator=(const ShutdownSignal&) = delete;
 
-	// 기다리던 시그널을 취소함. 남아 있으면 io_context가 끝나지 않음
-	void cancel();
+private:
+	void wait();
 
 private:
 	boost::asio::signal_set m_signals;
-	std::function<void()> m_onSignal;
+	const std::function<void()> m_onShutdown;
+	const std::function<void()> m_onForce;
+	bool m_received = false;
 };
 }

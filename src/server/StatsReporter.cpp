@@ -60,9 +60,11 @@ void StatsReporter::report()
 		" | out ", perSecond(current.packetsOut, m_previous.packetsOut), " pkt/s ",
 		perSecond(current.bytesOut, m_previous.bytesOut) / 1024, " KB/s",
 		" | queue peak ", current.peakSendQueueBytes / 1024, " KB",
-		" | reset: queue ", current.sendQueueResets - m_previous.sendQueueResets,
+		" | dropped: queue ", current.sendQueueResets - m_previous.sendQueueResets,
 		", heartbeat ", current.heartbeatResets - m_previous.heartbeatResets,
-		", rate ", current.receiveLimitResets - m_previous.receiveLimitResets);
+		", rate ", current.receiveLimitResets - m_previous.receiveLimitResets,
+		", login ", current.loginTimeouts - m_previous.loginTimeouts,
+		" | refused ", current.refusedConnections - m_previous.refusedConnections);
 
 	m_stats->peakSendQueueBytes = 0;
 	m_previous = *m_stats;

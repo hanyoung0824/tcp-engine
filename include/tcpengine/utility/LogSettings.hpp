@@ -12,16 +12,16 @@ namespace tcpengine
 {
 struct ConsoleLogSettings
 {
-	LogLevel level = LogLevel::Info;
+	LogLevel level{};
 };
 
 // path가 maxSize를 넘으면 path.1, path.2…로 밀어내고 새로 씀. 밀려난 파일은 maxFiles개까지 보관
 struct FileLogSettings
 {
-	LogLevel level = LogLevel::Debug;
+	LogLevel level{};
 	std::filesystem::path path;
-	std::size_t maxSize = 0;
-	std::size_t maxFiles = 0;
+	std::size_t maxSize{};
+	std::size_t maxFiles{};
 };
 
 // 로그 하나(엔진 또는 응용)를 출력할 곳. 없는 항목으로는 출력하지 않음

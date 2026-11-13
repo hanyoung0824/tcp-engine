@@ -32,6 +32,9 @@ TcpConnection::TcpConnection(tcp::socket socket, std::shared_ptr<const Connectio
 	std::ostringstream address;
 	address << m_socket.remote_endpoint(ec);
 	m_address = address.str();
+
+	// 작은 패킷을 ACK가 올 때까지 붙잡아 두는 Nagle 알고리즘을 끔. 여러 패킷은 이미 한 번의 쓰기로 묶어 보냄
+	m_socket.set_option(tcp::no_delay(true), ec);
 }
 
 TcpConnection::~TcpConnection()

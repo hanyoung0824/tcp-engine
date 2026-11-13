@@ -86,6 +86,7 @@ tcp_engine_add_layer(tcp_engine_network network
 	${INCLUDE_DIR}/network/PacketDispatcher.hpp
 	${INCLUDE_DIR}/network/TransportType.hpp
 	${INCLUDE_DIR}/network/Connection.hpp
+	${INCLUDE_DIR}/network/DisconnectReason.hpp
 	${SOURCE_DIR}/network/PacketHeader.hpp
 	${SOURCE_DIR}/network/PacketManager.hpp
 	${SOURCE_DIR}/network/PacketManager.cpp
@@ -117,6 +118,8 @@ tcp_engine_add_layer(tcp_engine_server server
 	${INCLUDE_DIR}/server/Session.hpp
 	${SOURCE_DIR}/server/Listener.hpp
 	${SOURCE_DIR}/server/Listener.cpp
+	${SOURCE_DIR}/server/LoginTimeoutMonitor.hpp
+	${SOURCE_DIR}/server/LoginTimeoutMonitor.cpp
 	${SOURCE_DIR}/server/Server.cpp
 	${SOURCE_DIR}/server/ServerSettings.cpp
 	${SOURCE_DIR}/server/ServerTransport.hpp
@@ -149,6 +152,8 @@ tcp_engine_add_layer(tcp_engine_client client
 	${SOURCE_DIR}/client/ClientTransport.hpp
 	${SOURCE_DIR}/client/ClientTransportFactory.hpp
 	${SOURCE_DIR}/client/ClientTransportFactory.cpp
+	${SOURCE_DIR}/client/Reconnector.hpp
+	${SOURCE_DIR}/client/Reconnector.cpp
 	${SOURCE_DIR}/client/TcpClientTransport.hpp
 	${SOURCE_DIR}/client/TcpClientTransport.cpp
 )

@@ -2,6 +2,7 @@
 
 #include "tcpengine/network/PacketDispatcher.hpp"
 #include "tcpengine/network/Connection.hpp"
+#include "tcpengine/network/DisconnectReason.hpp"
 #include "tcpengine/server/ServerSettings.hpp"
 #include "tcpengine/server/Session.hpp"
 #include "tcpengine/utility/Log.hpp"
@@ -9,6 +10,7 @@
 #include <atomic>
 #include <cstdint>
 #include <memory>
+#include <unordered_set>
 
 namespace boost::asio
 {
@@ -19,6 +21,7 @@ namespace tcpengine
 {
 struct ConnectionEventHandler;
 class HeartbeatMonitor;
+class LoginTimeoutMonitor;
 struct NetworkStats;
 class PacketManager;
 class ReceiveRateLimiter;
@@ -48,7 +51,8 @@ public:
 
 protected:
 	// 설정 파일에서 읽으려면 ServerSettings::create() 또는 ServerSettings::fromJson()을 씀
-	explicit Server(const ServerSettings& settings);
+	// protocolVersion은 응용 프로토콜 버전. 클라이언트가 접속 직후 알려 준 값과 다르면 VersionMismatch로 끊음
+	Server(const ServerSettings& settings, std::uint16_t protocolVersion);
 
 	// 세션이 있는 연결(로그인 후)에서만 받는 패킷. 세션 없이 오면 엔진이 버리고 로그를 남김
 	// handler(const std::shared_ptr<Session>&, const T&)는 네트워크 스레드에서 호출
@@ -101,7 +105,13 @@ private:
 	// 네트워크 스레드에서 종료 과정을 진행
 	void shutdown();
 
-	// 엔진 제어 패킷(Resume) 처리 등록
+	// 두 번째 종료 신호. 연결이 닫히기를 기다리지 않고 run()을 끝냄
+	void forceStop();
+
+	// 클라이언트에 이유를 알리고 정상 종료함
+	void disconnect(const std::shared_ptr<Connection>& connection, DisconnectReason reason);
+
+	// 엔진 제어 패킷(ClientHello, Resume, Logout) 처리 등록
 	void registerControlHandlers();
 
 	// transport가 연결 이벤트를 알릴 콜백. 하트비트, 세션, 응용 훅으로 이어 줌
@@ -123,11 +133,15 @@ private:
 	std::shared_ptr<NetworkStats> m_networkStats;
 	std::unique_ptr<HeartbeatMonitor> m_heartbeatMonitor;
 	std::unique_ptr<ReceiveRateLimiter> m_receiveRateLimiter;
+	std::unique_ptr<LoginTimeoutMonitor> m_loginTimeoutMonitor;
+	// ClientHello로 버전 확인을 마친 연결. 그 전에는 제어 패킷 말고는 받지 않음
+	std::unordered_set<Connection::ConnectionId> m_greetedConnections;
 	std::unique_ptr<SessionManager> m_sessionManager;
 	std::unique_ptr<StatsReporter> m_statsReporter;
 	std::unique_ptr<ServerTransport> m_transport;
 	std::unique_ptr<ShutdownSignal> m_shutdownSignal;
 	const ServerSettings m_settings;
+	const std::uint16_t m_protocolVersion;
 	bool m_running = false;
 	std::atomic<bool> m_stopRequested{ false };
 };

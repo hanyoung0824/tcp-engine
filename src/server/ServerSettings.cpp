@@ -49,6 +49,12 @@ void ServerSettings::validate() const
 	if (statsInterval.count() < 0) {
 		throw std::invalid_argument("statsIntervalSeconds must not be negative");
 	}
+	if (loginTimeout.count() < 0) {
+		throw std::invalid_argument("loginTimeoutSeconds must not be negative");
+	}
+	if (maxConnections == 0) {
+		throw std::invalid_argument("maxConnections must be positive");
+	}
 	heartbeat.validate();
 	session.validate();
 	log.validate();
@@ -84,6 +90,13 @@ ServerSettings ServerSettings::fromJson(const nlohmann::json& file)
 		settings.sendQueueLimit = static_cast<std::size_t>(sendQueueLimitKB) * 1024;
 		settings.receivePacketsPerSecond = engine.at("receiveLimit").at("packetsPerSecond").get<double>();
 		settings.statsInterval = std::chrono::seconds(engine.at("statsIntervalSeconds").get<std::int64_t>());
+		settings.loginTimeout = std::chrono::seconds(engine.at("loginTimeoutSeconds").get<std::int64_t>());
+
+		const std::int64_t maxConnections = engine.at("maxConnections").get<std::int64_t>();
+		if (maxConnections <= 0) {
+			throw std::invalid_argument("maxConnections must be positive");
+		}
+		settings.maxConnections = static_cast<std::size_t>(maxConnections);
 
 		settings.validate();
 	}

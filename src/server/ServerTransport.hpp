@@ -1,6 +1,9 @@
 #pragma once
 
+#include "tcpengine/network/Connection.hpp"
+
 #include <functional>
+#include <memory>
 
 namespace tcpengine
 {
@@ -15,8 +18,8 @@ public:
 
 	virtual void stopAccepting() = 0;
 
-	// 모든 연결을 close()하고 이후 들어오는 연결은 받지 않음
+	// 모든 연결에 farewell을 보내고 close()하며 이후 들어오는 연결은 받지 않음
 	// 연결이 모두 닫히면 onAllClosed를 한 번 부름. 연결이 없으면 바로 부름
-	virtual void closeAll(std::function<void()> onAllClosed) = 0;
+	virtual void closeAll(std::shared_ptr<const Connection::Buffer> farewell, std::function<void()> onAllClosed) = 0;
 };
 }

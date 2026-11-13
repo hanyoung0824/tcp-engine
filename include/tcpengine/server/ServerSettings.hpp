@@ -15,7 +15,7 @@ namespace tcpengine
 struct SessionSettings
 {
 	// 연결이 끊긴 세션을 재접속을 위해 남겨 두는 시간. 0이면 끊기는 즉시 끝냄
-	std::chrono::seconds resumeTimeout{ 30 };
+	std::chrono::seconds resumeTimeout{};
 
 	// 틀리면 이유를 담은 std::invalid_argument를 던짐
 	void validate() const;
@@ -24,18 +24,22 @@ struct SessionSettings
 // Server 생성자에 넘기는 엔진 설정. 응용은 getSettings()로 읽을 수 있음
 struct ServerSettings
 {
-	TransportType transport = TransportType::Tcp;
-	unsigned short port = 0;
+	TransportType transport{};
+	unsigned short port{};
 	HeartbeatSettings heartbeat;
 	SessionSettings session;
 	// close() 후 남은 데이터를 보내고 상대가 끊기를 기다리는 최대 시간. 0이면 바로 닫음
-	std::chrono::seconds closeTimeout{ 5 };
+	std::chrono::seconds closeTimeout{};
 	// 연결 하나에 아직 보내지 못한 바이트의 상한. 받는 쪽이 따라오지 못해 넘으면 그 연결을 끊음
-	std::size_t sendQueueLimit = 0;
+	std::size_t sendQueueLimit{};
 	// 연결 하나가 초당 보낼 수 있는 패킷 수. 1초 분량까지는 몰아서 보내도 되며 넘으면 그 연결을 끊음
-	double receivePacketsPerSecond = 0;
+	double receivePacketsPerSecond{};
 	// 서버 상태를 engine 로그에 남기는 간격. 0이면 남기지 않음
-	std::chrono::seconds statsInterval{ 0 };
+	std::chrono::seconds statsInterval{};
+	// 접속한 뒤 이 시간 안에 로그인(세션 시작)하지 않으면 끊음. 0이면 제한하지 않음
+	std::chrono::seconds loginTimeout{};
+	// 동시에 받을 수 있는 연결 수. 넘으면 새 연결에 ServerFull을 알리고 바로 닫음
+	std::size_t maxConnections{};
 	LogSettings log;
 
 	// 틀리면 이유를 담은 std::invalid_argument를 던짐. 하위 설정도 함께 검사

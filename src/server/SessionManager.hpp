@@ -52,6 +52,9 @@ public:
 	// 연결이 닫힐 때 호출. 세션이 있으면 분리하고 만료 타이머를 시작
 	void onConnectionClosed(const Connection& connection);
 
+	// 클라이언트가 Logout을 보냄. 세션이 있으면 재접속 대기 없이 바로 끝냄
+	void logout(const Connection& connection);
+
 	// 서버 종료 시 남은 세션을 모두 끝내고 이후 start(), resume()을 거부함
 	void stop();
 
@@ -62,7 +65,14 @@ private:
 
 	void attach(ServerSession& session, const std::shared_ptr<Connection>& connection);
 
-	void end(ServerSession& session, SessionEndReason reason);
+	// 연결을 닫는 방법. Graceful은 이유를 알린 뒤 정상 종료, Reset은 알리지 않고 RST
+	enum class ConnectionClose
+	{
+		Graceful,
+		Reset,
+	};
+
+	void end(ServerSession& session, SessionEndReason reason, ConnectionClose connectionClose);
 
 private:
 	boost::asio::any_io_executor m_executor;

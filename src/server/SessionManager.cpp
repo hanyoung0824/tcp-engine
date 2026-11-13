@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <iomanip>
+#include <optional>
 #include <random>
 #include <sstream>
 #include <vector>
@@ -23,6 +24,18 @@ namespace
 			token << std::setw(8) << static_cast<std::uint32_t>(random());
 		}
 		return token.str();
+	}
+
+	// 세션이 끝나 연결을 닫기 전에 클라이언트에 알릴 이유. 스스로 나갔거나 연결이 없으면 알리지 않음
+	std::optional<DisconnectReason> noticeFor(SessionEndReason reason)
+	{
+		switch (reason) {
+		case SessionEndReason::Closed: return DisconnectReason::Kicked;
+		case SessionEndReason::ServerStopped: return DisconnectReason::ServerShutdown;
+		case SessionEndReason::LoggedOut:
+		case SessionEndReason::Expired: return std::nullopt;
+		}
+		return std::nullopt;
 	}
 }
 
@@ -47,7 +60,14 @@ public:
 	void close() override
 	{
 		if (!isEnded()) {
-			m_owner->end(*this, SessionEndReason::Closed);
+			m_owner->end(*this, SessionEndReason::Closed, ConnectionClose::Graceful);
+		}
+	}
+
+	void reset() override
+	{
+		if (!isEnded()) {
+			m_owner->end(*this, SessionEndReason::Closed, ConnectionClose::Reset);
 		}
 	}
 
@@ -124,6 +144,7 @@ void SessionManager::resume(const std::shared_ptr<Connection>& connection, const
 		// 이전 연결이 끊긴 걸 아직 모르는 경우. 이전 연결을 버리고 새 연결로 넘김
 		const std::shared_ptr<Connection> previous = std::move(session->m_connection);
 		m_idsByConnection.erase(previous->getId());
+		previous->send(PacketManager::makeDisconnectPacket(DisconnectReason::Replaced));
 		previous->close();
 	}
 	else {
@@ -151,7 +172,7 @@ void SessionManager::onConnectionClosed(const Connection& connection)
 	session->m_connection.reset();
 
 	if (m_resumeTimeout.count() == 0) {
-		end(*session, SessionEndReason::Expired);
+		end(*session, SessionEndReason::Expired, ConnectionClose::Graceful);
 		return;
 	}
 
@@ -163,7 +184,7 @@ void SessionManager::onConnectionClosed(const Connection& connection)
 			return;
 		}
 		engineLogInfo("Session ", expired->m_id, " expired");
-		end(*expired, SessionEndReason::Expired);
+		end(*expired, SessionEndReason::Expired, ConnectionClose::Graceful);
 	});
 
 	if (m_callbacks.onDetached) {
@@ -185,7 +206,7 @@ void SessionManager::endAll()
 		sessions.push_back(session);
 	}
 	for (const std::shared_ptr<ServerSession>& session : sessions) {
-		end(*session, SessionEndReason::ServerStopped);
+		end(*session, SessionEndReason::ServerStopped, ConnectionClose::Graceful);
 	}
 }
 
@@ -195,7 +216,15 @@ void SessionManager::attach(ServerSession& session, const std::shared_ptr<Connec
 	m_idsByConnection[connection->getId()] = session.m_id;
 }
 
-void SessionManager::end(ServerSession& session, SessionEndReason reason)
+void SessionManager::logout(const Connection& connection)
+{
+	const auto idIt = m_idsByConnection.find(connection.getId());
+	if (idIt != m_idsByConnection.end()) {
+		end(*m_sessions.at(idIt->second), SessionEndReason::LoggedOut, ConnectionClose::Graceful);
+	}
+}
+
+void SessionManager::end(ServerSession& session, SessionEndReason reason, ConnectionClose connectionClose)
 {
 	if (session.isEnded()) {
 		return;
@@ -210,7 +239,15 @@ void SessionManager::end(ServerSession& session, SessionEndReason reason)
 
 	if (std::shared_ptr<Connection> connection = std::move(session.m_connection)) {
 		m_idsByConnection.erase(connection->getId());
-		connection->close();
+		if (connectionClose == ConnectionClose::Reset) {
+			connection->reset();
+		}
+		else {
+			if (const std::optional<DisconnectReason> notice = noticeFor(reason)) {
+				connection->send(PacketManager::makeDisconnectPacket(*notice));
+			}
+			connection->close();
+		}
 	}
 
 	engineLogInfo("Session ", session.m_id, " ended");

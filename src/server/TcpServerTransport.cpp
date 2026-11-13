@@ -7,9 +7,9 @@ using asio::ip::tcp;
 
 namespace tcpengine
 {
-TcpServerTransport::TcpServerTransport(asio::any_io_executor executor, unsigned short port, ConnectionOptions connectionOptions,
+TcpServerTransport::TcpServerTransport(asio::any_io_executor executor, unsigned short port, ConnectionOptions connectionOptions, std::size_t maxConnections,
 	std::shared_ptr<const ConnectionEventHandler> handler)
-	: m_connectionManager(std::move(handler), connectionOptions),
+	: m_connectionManager(std::move(handler), connectionOptions, maxConnections),
 	m_listener(std::move(executor), tcp::endpoint(tcp::v4(), port))
 {
 }
@@ -33,8 +33,8 @@ void TcpServerTransport::stopAccepting()
 	m_listener.close();
 }
 
-void TcpServerTransport::closeAll(std::function<void()> onAllClosed)
+void TcpServerTransport::closeAll(std::shared_ptr<const Connection::Buffer> farewell, std::function<void()> onAllClosed)
 {
-	m_connectionManager.closeAll(std::move(onAllClosed));
+	m_connectionManager.closeAll(std::move(farewell), std::move(onAllClosed));
 }
 }

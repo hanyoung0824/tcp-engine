@@ -34,6 +34,6 @@ struct ClientSettings
 	static ClientSettings fromJson(const nlohmann::json& file);
 
 	// 응용 설정이 없을 때 파일을 읽어 바로 만듦. 실패하면 "경로: 이유"를 담은 std::runtime_error
-	static ClientSettings create(const std::filesystem::path& path);
+	static ClientSettings fromFile(const std::filesystem::path& path);
 };
 }

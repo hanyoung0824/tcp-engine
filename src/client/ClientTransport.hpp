@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ConnectionEventHandler.hpp"
+#include "ConnectionEvents.hpp"
 #include "tcpengine/network/Connection.hpp"
 
 #include <boost/asio/any_io_executor.hpp>
@@ -28,7 +28,7 @@ public:
 	// 결과는 네트워크 스레드에서 onResult로 알림. 성공하면 handler의 onConnected가 먼저 불림
 	// 어느 스레드에서 불러도 되지만 이전 연결이 끝난 뒤에만 부름
 	virtual void connect(const std::string& host, unsigned short port, std::chrono::seconds timeout,
-		std::shared_ptr<const ConnectionEventHandler> handler, ConnectResult onResult) = 0;
+		std::shared_ptr<const ConnectionEvents> events, ConnectResult onResult) = 0;
 
 	// 하트비트 타이머 등 네트워크 스레드에서 돌릴 작업용
 	virtual boost::asio::any_io_executor getExecutor() = 0;

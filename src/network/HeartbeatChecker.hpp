@@ -14,14 +14,14 @@ namespace tcpengine
 {
 // 연결마다 하트비트를 돌림. Connection 인터페이스만 쓰므로 프로토콜과 무관함
 // 네트워크 스레드에서만 사용
-class HeartbeatMonitor
+class HeartbeatChecker
 {
 public:
 	// stats에는 하트비트로 끊은 횟수를 쌓음
-	HeartbeatMonitor(boost::asio::any_io_executor executor, std::shared_ptr<NetworkStats> stats);
+	HeartbeatChecker(boost::asio::any_io_executor executor, std::shared_ptr<NetworkStats> stats);
 
-	HeartbeatMonitor(const HeartbeatMonitor&) = delete;
-	HeartbeatMonitor& operator=(const HeartbeatMonitor&) = delete;
+	HeartbeatChecker(const HeartbeatChecker&) = delete;
+	HeartbeatChecker& operator=(const HeartbeatChecker&) = delete;
 
 	// interval마다 pingData를 보내고(null이면 안 보냄) timeout 동안 받은 게 없으면 연결을 RST로 끊음
 	// interval이 0이면 아무것도 하지 않음. 이미 돌고 있으면 새 값으로 다시 시작

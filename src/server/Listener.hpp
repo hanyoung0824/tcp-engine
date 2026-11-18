@@ -12,7 +12,7 @@ public:
 	using AcceptHandler = std::function<void(boost::asio::ip::tcp::socket)>;
 
 public:
-	Listener(boost::asio::any_io_executor executor, const boost::asio::ip::tcp::endpoint& endPoint);
+	Listener(boost::asio::any_io_executor executor, const boost::asio::ip::tcp::endpoint& endpoint);
 
 	bool open();
 
@@ -20,7 +20,7 @@ public:
 
 	void close();
 
-	const boost::asio::ip::tcp::endpoint& getEndPoint() const { return m_endPoint; }
+	const boost::asio::ip::tcp::endpoint& getEndpoint() const { return m_endpoint; }
 
 private:
 	void startAccept();
@@ -33,7 +33,7 @@ private:
 private:
 	boost::asio::ip::tcp::acceptor m_acceptor;
 	boost::asio::steady_timer m_retryTimer;
-	const boost::asio::ip::tcp::endpoint m_endPoint;
+	const boost::asio::ip::tcp::endpoint m_endpoint;
 	AcceptHandler m_onAccept;
 };
 }

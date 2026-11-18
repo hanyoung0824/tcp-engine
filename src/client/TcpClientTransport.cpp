@@ -2,7 +2,10 @@
 
 #include "EngineLog.hpp"
 
+#include <functional>
+#include <memory>
 #include <string>
+#include <utility>
 
 namespace asio = boost::asio;
 using asio::ip::tcp;
@@ -11,20 +14,89 @@ namespace tcpengine
 {
 namespace
 {
-	// 접속 시도 하나에 필요한 것. 이름 풀이, 연결, 시간 제한 콜백이 함께 잡고 있다가 끝나면 사라짐
-	struct ConnectAttempt
+	// 이름 풀이 → 연결을 timeout 안에 한 번 시도함. 진행 중인 비동기 작업들이 잡고 있다가 끝나면 사라짐
+	class ConnectAttempt : public std::enable_shared_from_this<ConnectAttempt>
 	{
-		explicit ConnectAttempt(asio::io_context& ioContext)
-			: resolver(ioContext),
-			socket(ioContext),
-			timer(ioContext)
+	public:
+		using ConnectedHandler = std::function<void(tcp::socket socket)>;
+		using FailedHandler = std::function<void()>;
+
+		ConnectAttempt(asio::io_context& ioContext, std::string host, unsigned short port,
+			ConnectedHandler onConnected, FailedHandler onFailed)
+			: m_resolver(ioContext),
+			m_socket(ioContext),
+			m_timer(ioContext),
+			m_host(std::move(host)),
+			m_port(port),
+			m_onConnected(std::move(onConnected)),
+			m_onFailed(std::move(onFailed))
 		{
 		}
 
-		tcp::resolver resolver;
-		tcp::socket socket;
-		asio::steady_timer timer;
-		bool timedOut = false;
+		void start(std::chrono::seconds timeout)
+		{
+			m_timer.expires_after(timeout);
+			m_timer.async_wait([self = shared_from_this()](const boost::system::error_code& ec) {
+				if (!ec) {
+					self->timeOut();
+				}
+			});
+
+			m_resolver.async_resolve(m_host, std::to_string(m_port),
+				[self = shared_from_this()](const boost::system::error_code& ec, const tcp::resolver::results_type& endpoints) {
+					self->onResolved(ec, endpoints);
+				});
+		}
+
+	private:
+		void onResolved(const boost::system::error_code& ec, const tcp::resolver::results_type& endpoints)
+		{
+			if (ec) {
+				fail(ec.message());
+				return;
+			}
+			asio::async_connect(m_socket, endpoints,
+				[self = shared_from_this()](const boost::system::error_code& connectError, const tcp::endpoint&) {
+					self->onConnected(connectError);
+				});
+		}
+
+		void onConnected(const boost::system::error_code& ec)
+		{
+			// 시간 제한과 연결 완료가 거의 동시에 일어나면 ec 없이 올 수 있음
+			if (ec || m_timedOut) {
+				fail(ec.message());
+				return;
+			}
+			m_timer.cancel();
+			m_onConnected(std::move(m_socket));
+		}
+
+		// 진행 중인 단계를 취소해 그 단계가 오류로 끝나게 함
+		void timeOut()
+		{
+			m_timedOut = true;
+			m_resolver.cancel();
+			boost::system::error_code ignored;
+			m_socket.close(ignored);
+		}
+
+		void fail(const std::string& reason)
+		{
+			m_timer.cancel();
+			engineLogWarning("Failed to connect to ", m_host, ':', m_port, ": ", m_timedOut ? "timed out" : reason);
+			m_onFailed();
+		}
+
+	private:
+		tcp::resolver m_resolver;
+		tcp::socket m_socket;
+		asio::steady_timer m_timer;
+		const std::string m_host;
+		const unsigned short m_port;
+		const ConnectedHandler m_onConnected;
+		const FailedHandler m_onFailed;
+		bool m_timedOut = false;
 	};
 }
 
@@ -48,49 +120,16 @@ void TcpClientTransport::start()
 }
 
 void TcpClientTransport::connect(const std::string& host, unsigned short port, std::chrono::seconds timeout,
-	std::shared_ptr<const ConnectionEventHandler> handler, ConnectResult onResult)
+	std::shared_ptr<const ConnectionEvents> events, ConnectResult onResult)
 {
-	asio::post(m_ioContext, [this, host, port, timeout, handler = std::move(handler), onResult = std::move(onResult)]() mutable {
-		auto attempt = std::make_shared<ConnectAttempt>(m_ioContext);
-
-		attempt->timer.expires_after(timeout);
-		attempt->timer.async_wait([attempt](const boost::system::error_code& ec) {
-			if (ec) {
-				return;
-			}
-			attempt->timedOut = true;
-			boost::system::error_code ignored;
-			attempt->resolver.cancel();
-			attempt->socket.close(ignored);
-		});
-
-		const auto fail = [attempt, host, port, onResult](const std::string& reason) {
-			attempt->timer.cancel();
-			engineLogWarning("Failed to connect to ", host, ':', port, ": ", attempt->timedOut ? "timed out" : reason);
-			onResult(false);
+	asio::post(m_ioContext, [this, host, port, timeout, events = std::move(events), onResult = std::move(onResult)] {
+		const auto onConnected = [this, events, onResult](tcp::socket socket) {
+			m_connection = std::make_shared<TcpConnection>(std::move(socket), events, m_nextConnectionId++, m_connectionOptions);
+			m_connection->start();
+			onResult(true);
 		};
-
-		attempt->resolver.async_resolve(host, std::to_string(port),
-			[this, attempt, handler = std::move(handler), onResult, fail](const boost::system::error_code& ec,
-				const tcp::resolver::results_type& endPoints) mutable {
-				if (ec) {
-					fail(ec.message());
-					return;
-				}
-				asio::async_connect(attempt->socket, endPoints,
-					[this, attempt, handler = std::move(handler), onResult, fail](const boost::system::error_code& connectError,
-						const tcp::endpoint&) mutable {
-						if (connectError || attempt->timedOut) {
-							fail(connectError.message());
-							return;
-						}
-						attempt->timer.cancel();
-						m_connection = std::make_shared<TcpConnection>(std::move(attempt->socket), std::move(handler),
-							m_nextConnectionId++, m_connectionOptions);
-						m_connection->start();
-						onResult(true);
-					});
-			});
+		const auto onFailed = [onResult] { onResult(false); };
+		std::make_shared<ConnectAttempt>(m_ioContext, host, port, onConnected, onFailed)->start(timeout);
 	});
 }
 

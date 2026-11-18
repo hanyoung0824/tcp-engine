@@ -7,10 +7,10 @@
 
 namespace tcpengine
 {
-Reconnector::Reconnector(boost::asio::any_io_executor executor, std::chrono::seconds maxDelay, Attempt attempt)
+Reconnector::Reconnector(boost::asio::any_io_executor executor, std::chrono::seconds maxDelay, TryConnect tryConnect)
 	: m_timer(std::move(executor)),
 	m_maxDelay(maxDelay),
-	m_attempt(std::move(attempt))
+	m_tryConnect(std::move(tryConnect))
 {
 }
 
@@ -21,19 +21,19 @@ void Reconnector::schedule()
 	}
 
 	std::chrono::seconds delay(1);
-	for (int i = 0; i < m_attempts && delay < m_maxDelay; ++i) {
+	for (int i = 0; i < m_attemptCount && delay < m_maxDelay; ++i) {
 		delay *= 2;
 	}
 	delay = std::min(delay, m_maxDelay);
-	++m_attempts;
+	++m_attemptCount;
 
-	engineLogInfo("Reconnecting in ", delay.count(), "s (attempt ", m_attempts, ")");
+	engineLogInfo("Reconnecting in ", delay.count(), "s (attempt ", m_attemptCount, ")");
 	m_timer.expires_after(delay);
 	m_timer.async_wait([this](const boost::system::error_code& ec) {
 		if (ec || m_cancelled) {
 			return;
 		}
-		m_attempt([this](bool connected) {
+		m_tryConnect([this](bool connected) {
 			if (!connected) {
 				schedule();
 			}

@@ -88,7 +88,7 @@ ServerSettings ServerSettings::fromJson(const nlohmann::json& file)
 	return settings;
 }
 
-ServerSettings ServerSettings::create(const std::filesystem::path& path)
+ServerSettings ServerSettings::fromFile(const std::filesystem::path& path)
 {
 	try {
 		return fromJson(loadJsonFile(path));

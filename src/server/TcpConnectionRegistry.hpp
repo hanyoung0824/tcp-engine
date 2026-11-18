@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ConnectionEventHandler.hpp"
+#include "ConnectionEvents.hpp"
 #include "ConnectionOptions.hpp"
 #include "TcpConnection.hpp"
 
@@ -16,17 +16,17 @@
 namespace tcpengine
 {
 // TCP 연결 객체의 목록과 수명을 관리함. 수락한 소켓으로 연결을 만들고, 닫히면 목록에서 빼고, 서버 종료 때 모두 닫음
-// 연결이 규칙을 지키는지는 서버의 AdmissionControl이 봄. 네트워크 스레드에서만 사용
+// 연결이 규칙을 지키는지는 서버의 ConnectionGuard가 봄. 네트워크 스레드에서만 사용
 class TcpConnectionRegistry
 {
 public:
 	// maxConnections를 넘는 새 소켓은 ServerFull을 알리고 바로 닫음
-	TcpConnectionRegistry(std::shared_ptr<const ConnectionEventHandler> handler, ConnectionOptions options, std::size_t maxConnections);
+	TcpConnectionRegistry(std::shared_ptr<const ConnectionEvents> events, ConnectionOptions options, std::size_t maxConnections);
 
 	TcpConnectionRegistry(const TcpConnectionRegistry&) = delete;
 	TcpConnectionRegistry& operator=(const TcpConnectionRegistry&) = delete;
 
-	void createConnection(boost::asio::ip::tcp::socket socket);
+	void addConnection(boost::asio::ip::tcp::socket socket);
 
 	// 모든 연결에 farewell을 보내고 close()함. 이후 들어오는 소켓은 바로 닫음
 	// 이미 닫는 중인 연결은 farewell을 보내지 않음. 연결이 모두 닫히면 onAllClosed를 부름. 한 번만 처리함
@@ -48,7 +48,7 @@ private:
 	void refuse(boost::asio::ip::tcp::socket socket);
 
 private:
-	const std::shared_ptr<const ConnectionEventHandler> m_handler;
+	const std::shared_ptr<const ConnectionEvents> m_events;
 	const ConnectionOptions m_options;
 	const std::size_t m_maxConnections;
 	std::uint64_t m_refusedSinceLog = 0;

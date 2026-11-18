@@ -1,7 +1,7 @@
 #pragma once
 
 #include "ClientTransport.hpp"
-#include "ConnectionEventHandler.hpp"
+#include "ConnectionEvents.hpp"
 #include "ConnectionOptions.hpp"
 #include "TcpConnection.hpp"
 
@@ -27,7 +27,7 @@ public:
 	void start() override;
 
 	void connect(const std::string& host, unsigned short port, std::chrono::seconds timeout,
-		std::shared_ptr<const ConnectionEventHandler> handler, ConnectResult onResult) override;
+		std::shared_ptr<const ConnectionEvents> events, ConnectResult onResult) override;
 
 	boost::asio::any_io_executor getExecutor() override { return m_ioContext.get_executor(); }
 

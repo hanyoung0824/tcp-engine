@@ -1,4 +1,4 @@
-#include "AdmissionControl.hpp"
+#include "ConnectionGuard.hpp"
 
 #include "ControlPackets.hpp"
 #include "EngineLog.hpp"
@@ -8,13 +8,13 @@
 
 namespace tcpengine
 {
-AdmissionControl::AdmissionControl(boost::asio::any_io_executor executor, const Settings& settings,
+ConnectionGuard::ConnectionGuard(boost::asio::any_io_executor executor, const Settings& settings,
 	std::shared_ptr<NetworkStats> stats, Disconnect disconnect)
 	: m_settings(settings),
 	m_stats(std::move(stats)),
 	m_disconnect(std::move(disconnect)),
 	m_receiveRateLimiter(settings.receivePacketsPerSecond),
-	m_loginTimeoutMonitor(std::move(executor), settings.loginTimeout, [this](const std::shared_ptr<Connection>& connection) {
+	m_loginDeadline(std::move(executor), settings.loginTimeout, [this](const std::shared_ptr<Connection>& connection) {
 		engineLogWarning("Login timeout from ", connection->getAddress(), ", closing");
 		++m_stats->loginTimeouts;
 		m_disconnect(connection, DisconnectReason::LoginTimeout);
@@ -22,25 +22,25 @@ AdmissionControl::AdmissionControl(boost::asio::any_io_executor executor, const 
 {
 }
 
-void AdmissionControl::onConnected(const std::shared_ptr<Connection>& connection)
+void ConnectionGuard::onConnected(const std::shared_ptr<Connection>& connection)
 {
 	m_receiveRateLimiter.start(*connection);
-	m_loginTimeoutMonitor.start(connection);
+	m_loginDeadline.start(connection);
 }
 
-void AdmissionControl::onLoggedIn(const Connection& connection)
+void ConnectionGuard::onLoggedIn(const Connection& connection)
 {
-	m_loginTimeoutMonitor.stop(connection);
+	m_loginDeadline.stop(connection);
 }
 
-void AdmissionControl::onDisconnected(const Connection& connection)
+void ConnectionGuard::onDisconnected(const Connection& connection)
 {
 	m_receiveRateLimiter.stop(connection);
-	m_loginTimeoutMonitor.stop(connection);
-	m_greetedConnections.erase(connection.getId());
+	m_loginDeadline.stop(connection);
+	m_handshakeDoneConnections.erase(connection.getId());
 }
 
-bool AdmissionControl::allowPacket(const std::shared_ptr<Connection>& connection, std::uint16_t packetId)
+bool ConnectionGuard::allowPacket(const std::shared_ptr<Connection>& connection, std::uint16_t packetId)
 {
 	// 어기면 RST로 끊음. 연결이 닫히는 중이 되므로 남은 데이터는 잘못된 데이터로 따로 처리되지 않음
 	if (!m_receiveRateLimiter.tryReceive(*connection)) {
@@ -49,7 +49,7 @@ bool AdmissionControl::allowPacket(const std::shared_ptr<Connection>& connection
 		connection->reset();
 		return false;
 	}
-	if (packetId != controlPacketId && !isGreeted(*connection)) {
+	if (packetId != controlPacketId && !isHandshakeDone(*connection)) {
 		engineLogWarning("Packet ", packetId, " before ClientHello from ", connection->getAddress(), ", resetting");
 		connection->reset();
 		return false;
@@ -58,7 +58,7 @@ bool AdmissionControl::allowPacket(const std::shared_ptr<Connection>& connection
 	return true;
 }
 
-bool AdmissionControl::handleClientHello(const std::shared_ptr<Connection>& connection, PacketReader& body)
+bool ConnectionGuard::handleClientHello(const std::shared_ptr<Connection>& connection, PacketReader& body)
 {
 	const std::optional<control::ClientHello> hello = control::readClientHello(body);
 	if (!hello) {
@@ -70,12 +70,12 @@ bool AdmissionControl::handleClientHello(const std::shared_ptr<Connection>& conn
 		m_disconnect(connection, DisconnectReason::VersionMismatch);
 		return true;
 	}
-	m_greetedConnections.insert(connection->getId());
+	m_handshakeDoneConnections.insert(connection->getId());
 	return true;
 }
 
-bool AdmissionControl::isGreeted(const Connection& connection) const
+bool ConnectionGuard::isHandshakeDone(const Connection& connection) const
 {
-	return m_greetedConnections.contains(connection.getId());
+	return m_handshakeDoneConnections.contains(connection.getId());
 }
 }

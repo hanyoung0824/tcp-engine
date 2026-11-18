@@ -12,7 +12,7 @@ enum class LogSource
 {
 	Engine,
 	App,
-	MaxCount,  // 출처 개수. 출처가 아님
+	Count,  // 출처 개수. 출처가 아님
 };
 
 class LogSystem;

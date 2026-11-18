@@ -14,10 +14,10 @@ namespace
 	constexpr std::chrono::milliseconds acceptRetryDelay{ 500 };
 }
 
-Listener::Listener(asio::any_io_executor executor, const tcp::endpoint& endPoint)
+Listener::Listener(asio::any_io_executor executor, const tcp::endpoint& endpoint)
 	: m_acceptor(executor),
 	m_retryTimer(executor),
-	m_endPoint(endPoint)
+	m_endpoint(endpoint)
 {
 }
 
@@ -25,7 +25,7 @@ bool Listener::open()
 {
 	boost::system::error_code ec;
 
-	m_acceptor.open(m_endPoint.protocol(), ec);
+	m_acceptor.open(m_endpoint.protocol(), ec);
 	if (ec) {
 		engineLogError("Failed to open acceptor: ", ec.message());
 		return false;
@@ -42,9 +42,9 @@ bool Listener::open()
 		return false;
 	}
 
-	m_acceptor.bind(m_endPoint, ec);
+	m_acceptor.bind(m_endpoint, ec);
 	if (ec) {
-		engineLogError("Failed to bind ", m_endPoint, ": ", ec.message());
+		engineLogError("Failed to bind ", m_endpoint, ": ", ec.message());
 		return false;
 	}
 

@@ -37,7 +37,7 @@ public:
 	SessionManager& operator=(const SessionManager&) = delete;
 
 	// 연결에 이미 세션이 있거나 stop() 뒤면 nullptr
-	std::shared_ptr<Session> start(const std::shared_ptr<Connection>& connection);
+	std::shared_ptr<Session> startSession(const std::shared_ptr<Connection>& connection);
 
 	std::shared_ptr<Session> find(const Connection& connection) const;
 
@@ -55,7 +55,7 @@ public:
 	// 클라이언트가 Logout을 보냄. 세션이 있으면 재접속 대기 없이 바로 끝냄
 	void logout(const Connection& connection);
 
-	// 서버 종료 시 남은 세션을 모두 끝내고 이후 start(), resume()을 거부함
+	// 서버 종료 시 남은 세션을 모두 끝내고 이후 startSession(), resume()을 거부함
 	void stop();
 
 private:

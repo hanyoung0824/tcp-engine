@@ -1,16 +1,16 @@
-#include "LoginTimeoutMonitor.hpp"
+#include "LoginDeadline.hpp"
 
 #include <utility>
 
 namespace tcpengine
 {
-LoginTimeoutMonitor::Entry::Entry(boost::asio::any_io_executor executor, const std::shared_ptr<Connection>& connection)
+LoginDeadline::Entry::Entry(boost::asio::any_io_executor executor, const std::shared_ptr<Connection>& connection)
 	: connection(connection),
 	timer(std::move(executor))
 {
 }
 
-LoginTimeoutMonitor::LoginTimeoutMonitor(boost::asio::any_io_executor executor, std::chrono::seconds timeout,
+LoginDeadline::LoginDeadline(boost::asio::any_io_executor executor, std::chrono::seconds timeout,
 	TimeoutHandler onTimeout)
 	: m_executor(std::move(executor)),
 	m_timeout(timeout),
@@ -18,7 +18,7 @@ LoginTimeoutMonitor::LoginTimeoutMonitor(boost::asio::any_io_executor executor, 
 {
 }
 
-void LoginTimeoutMonitor::start(const std::shared_ptr<Connection>& connection)
+void LoginDeadline::start(const std::shared_ptr<Connection>& connection)
 {
 	if (m_timeout.count() == 0) {
 		return;
@@ -35,13 +35,13 @@ void LoginTimeoutMonitor::start(const std::shared_ptr<Connection>& connection)
 	m_entries.insert_or_assign(id, std::move(entry));
 }
 
-void LoginTimeoutMonitor::stop(const Connection& connection)
+void LoginDeadline::stop(const Connection& connection)
 {
 	// 타이머가 함께 소멸하면서 대기 중인 콜백은 취소됨
 	m_entries.erase(connection.getId());
 }
 
-void LoginTimeoutMonitor::onTimer(Connection::ConnectionId id)
+void LoginDeadline::onTimer(Connection::ConnectionId id)
 {
 	const auto it = m_entries.find(id);
 	if (it == m_entries.end()) {

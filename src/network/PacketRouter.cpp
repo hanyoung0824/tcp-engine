@@ -1,4 +1,4 @@
-#include "PacketManager.hpp"
+#include "PacketRouter.hpp"
 
 #include "ControlPackets.hpp"
 #include "EngineLog.hpp"
@@ -7,7 +7,7 @@
 
 namespace tcpengine
 {
-bool PacketManager::addDispatcher(std::uint16_t id, detail::PacketDispatcher dispatcher)
+bool PacketRouter::addDispatcher(std::uint16_t id, detail::PacketDispatcher dispatcher)
 {
 	if (id < firstAppPacketId) {
 		engineLogError("Packet id ", id, " is reserved for the engine, app ids start at ", firstAppPacketId);
@@ -21,17 +21,17 @@ bool PacketManager::addDispatcher(std::uint16_t id, detail::PacketDispatcher dis
 	return true;
 }
 
-void PacketManager::setControlHandler(ControlType type, ControlHandler handler)
+void PacketRouter::setControlHandler(ControlType type, ControlHandler handler)
 {
 	m_controlHandlers[static_cast<std::uint16_t>(type)] = std::move(handler);
 }
 
-void PacketManager::setPacketFilter(PacketFilter filter)
+void PacketRouter::setPacketFilter(PacketFilter filter)
 {
 	m_packetFilter = std::move(filter);
 }
 
-std::optional<std::size_t> PacketManager::onReceive(const std::shared_ptr<Connection>& connection,
+std::optional<std::size_t> PacketRouter::processReceived(const std::shared_ptr<Connection>& connection,
 	std::span<const std::uint8_t> data) const
 {
 	std::size_t processed = 0;
@@ -83,7 +83,7 @@ std::optional<std::size_t> PacketManager::onReceive(const std::shared_ptr<Connec
 	return processed;
 }
 
-bool PacketManager::dispatch(const std::shared_ptr<Connection>& connection, std::uint16_t id, PacketReader& body) const
+bool PacketRouter::dispatch(const std::shared_ptr<Connection>& connection, std::uint16_t id, PacketReader& body) const
 {
 	if (id == controlPacketId) {
 		if (!handleControlPacket(connection, body)) {
@@ -106,7 +106,7 @@ bool PacketManager::dispatch(const std::shared_ptr<Connection>& connection, std:
 	return true;
 }
 
-bool PacketManager::handleControlPacket(const std::shared_ptr<Connection>& connection, PacketReader& body) const
+bool PacketRouter::handleControlPacket(const std::shared_ptr<Connection>& connection, PacketReader& body) const
 {
 	std::uint16_t type = 0;
 	if (!body.readUInt16(type)) {

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ConnectionEventHandler.hpp"
+#include "ConnectionEvents.hpp"
 #include "ConnectionOptions.hpp"
 #include "tcpengine/network/Connection.hpp"
 
@@ -22,7 +22,7 @@ public:
 	using CloseCallback = std::function<void(ConnectionId id)>;
 
 public:
-	TcpConnection(boost::asio::ip::tcp::socket socket, std::shared_ptr<const ConnectionEventHandler> handler,
+	TcpConnection(boost::asio::ip::tcp::socket socket, std::shared_ptr<const ConnectionEvents> events,
 		ConnectionId id, ConnectionOptions options, CloseCallback onClosed = {});
 	~TcpConnection() override;
 
@@ -85,7 +85,7 @@ private:
 
 private:
 	boost::asio::ip::tcp::socket m_socket;
-	const std::shared_ptr<const ConnectionEventHandler> m_handler;
+	const std::shared_ptr<const ConnectionEvents> m_events;
 	const ConnectionId m_id;
 	std::string m_address;
 	// 바꾸는 것은 네트워크 스레드뿐이지만 isClosed()는 어느 스레드에서나 읽으므로 atomic

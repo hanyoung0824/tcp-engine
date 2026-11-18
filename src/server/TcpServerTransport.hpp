@@ -2,7 +2,7 @@
 
 #include "Listener.hpp"
 #include "ServerTransport.hpp"
-#include "ConnectionEventHandler.hpp"
+#include "ConnectionEvents.hpp"
 #include "TcpConnectionRegistry.hpp"
 #include "ConnectionOptions.hpp"
 
@@ -17,7 +17,7 @@ class TcpServerTransport final : public ServerTransport
 {
 public:
 	TcpServerTransport(boost::asio::any_io_executor executor, unsigned short port, ConnectionOptions connectionOptions, std::size_t maxConnections,
-		std::shared_ptr<const ConnectionEventHandler> handler);
+		std::shared_ptr<const ConnectionEvents> events);
 
 	TcpServerTransport(const TcpServerTransport&) = delete;
 	TcpServerTransport& operator=(const TcpServerTransport&) = delete;

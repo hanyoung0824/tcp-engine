@@ -92,14 +92,14 @@ tcp_engine_add_layer(tcp_engine_network network
 	${SOURCE_DIR}/network/PacketHeader.hpp
 	${SOURCE_DIR}/network/ControlPackets.hpp
 	${SOURCE_DIR}/network/ControlPackets.cpp
-	${SOURCE_DIR}/network/PacketManager.hpp
-	${SOURCE_DIR}/network/PacketManager.cpp
+	${SOURCE_DIR}/network/PacketRouter.hpp
+	${SOURCE_DIR}/network/PacketRouter.cpp
 	${SOURCE_DIR}/network/ReceiveRateLimiter.hpp
 	${SOURCE_DIR}/network/ReceiveRateLimiter.cpp
-	${SOURCE_DIR}/network/ConnectionEventHandler.hpp
+	${SOURCE_DIR}/network/ConnectionEvents.hpp
 	${SOURCE_DIR}/network/ConnectionOptions.hpp
-	${SOURCE_DIR}/network/HeartbeatMonitor.hpp
-	${SOURCE_DIR}/network/HeartbeatMonitor.cpp
+	${SOURCE_DIR}/network/HeartbeatChecker.hpp
+	${SOURCE_DIR}/network/HeartbeatChecker.cpp
 	${SOURCE_DIR}/network/NetworkStats.hpp
 	${SOURCE_DIR}/network/TcpConnection.hpp
 	${SOURCE_DIR}/network/TcpConnection.cpp
@@ -120,25 +120,27 @@ tcp_engine_add_layer(tcp_engine_server server
 	${INCLUDE_DIR}/server/Server.hpp
 	${INCLUDE_DIR}/server/ServerSettings.hpp
 	${INCLUDE_DIR}/server/Session.hpp
+	${SOURCE_DIR}/server/ConnectionManager.hpp
+	${SOURCE_DIR}/server/ConnectionManager.cpp
 	${SOURCE_DIR}/server/Listener.hpp
 	${SOURCE_DIR}/server/Listener.cpp
-	${SOURCE_DIR}/server/LoginTimeoutMonitor.hpp
-	${SOURCE_DIR}/server/LoginTimeoutMonitor.cpp
+	${SOURCE_DIR}/server/LoginDeadline.hpp
+	${SOURCE_DIR}/server/LoginDeadline.cpp
 	${SOURCE_DIR}/server/Server.cpp
+	${SOURCE_DIR}/server/ServerMonitor.hpp
+	${SOURCE_DIR}/server/ServerMonitor.cpp
 	${SOURCE_DIR}/server/ServerSettings.cpp
 	${SOURCE_DIR}/server/ServerTransport.hpp
 	${SOURCE_DIR}/server/ServerTransportFactory.hpp
 	${SOURCE_DIR}/server/ServerTransportFactory.cpp
 	${SOURCE_DIR}/server/SessionManager.hpp
 	${SOURCE_DIR}/server/SessionManager.cpp
-	${SOURCE_DIR}/server/StatsReporter.hpp
-	${SOURCE_DIR}/server/StatsReporter.cpp
-	${SOURCE_DIR}/server/ShutdownSignal.hpp
-	${SOURCE_DIR}/server/ShutdownSignal.cpp
+	${SOURCE_DIR}/server/ShutdownSignalHandler.hpp
+	${SOURCE_DIR}/server/ShutdownSignalHandler.cpp
 	${SOURCE_DIR}/server/TcpConnectionRegistry.hpp
 	${SOURCE_DIR}/server/TcpConnectionRegistry.cpp
-	${SOURCE_DIR}/server/AdmissionControl.hpp
-	${SOURCE_DIR}/server/AdmissionControl.cpp
+	${SOURCE_DIR}/server/ConnectionGuard.hpp
+	${SOURCE_DIR}/server/ConnectionGuard.cpp
 	${SOURCE_DIR}/server/TcpServerTransport.hpp
 	${SOURCE_DIR}/server/TcpServerTransport.cpp
 )

@@ -1,4 +1,4 @@
-#include "StatsReporter.hpp"
+#include "ServerMonitor.hpp"
 
 #include "EngineLog.hpp"
 
@@ -6,16 +6,14 @@
 
 namespace tcpengine
 {
-StatsReporter::StatsReporter(boost::asio::any_io_executor executor, std::chrono::seconds interval,
-	std::shared_ptr<NetworkStats> stats, const SessionManager& sessionManager)
+ServerMonitor::ServerMonitor(boost::asio::any_io_executor executor, std::chrono::seconds interval, SessionCounter countSessions)
 	: m_timer(std::move(executor)),
 	m_interval(interval),
-	m_stats(std::move(stats)),
-	m_sessionManager(sessionManager)
+	m_countSessions(std::move(countSessions))
 {
 }
 
-void StatsReporter::start()
+void ServerMonitor::start()
 {
 	if (m_interval.count() == 0) {
 		return;
@@ -25,12 +23,12 @@ void StatsReporter::start()
 	schedule();
 }
 
-void StatsReporter::stop()
+void ServerMonitor::stop()
 {
 	m_timer.cancel();
 }
 
-void StatsReporter::schedule()
+void ServerMonitor::schedule()
 {
 	m_timer.expires_after(m_interval);
 	m_timer.async_wait([this](const boost::system::error_code& ec) {
@@ -42,11 +40,12 @@ void StatsReporter::schedule()
 	});
 }
 
-void StatsReporter::report()
+void ServerMonitor::report()
 {
 	const NetworkStats& current = *m_stats;
 	const auto now = std::chrono::steady_clock::now();
 	const double seconds = std::chrono::duration<double>(now - m_previousTime).count();
+	const SessionCounts sessions = m_countSessions();
 	const auto perSecond = [seconds](std::uint64_t after, std::uint64_t before) {
 		return static_cast<std::uint64_t>(static_cast<double>(after - before) / seconds);
 	};
@@ -54,7 +53,7 @@ void StatsReporter::report()
 	engineLogInfo("[stats] conn ", current.connectionsOpened - current.connectionsClosed,
 		" (+", current.connectionsOpened - m_previous.connectionsOpened,
 		" -", current.connectionsClosed - m_previous.connectionsClosed, ")",
-		", sessions ", m_sessionManager.getSessionCount(), " (detached ", m_sessionManager.getDetachedCount(), ")",
+		", sessions ", sessions.total, " (detached ", sessions.detached, ")",
 		" | in ", perSecond(current.packetsIn, m_previous.packetsIn), " pkt/s ",
 		perSecond(current.bytesIn, m_previous.bytesIn) / 1024, " KB/s",
 		" | out ", perSecond(current.packetsOut, m_previous.packetsOut), " pkt/s ",

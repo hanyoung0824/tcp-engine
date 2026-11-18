@@ -16,18 +16,16 @@
 namespace tcpengine
 {
 class ClientTransport;
-struct ConnectionEventHandler;
-class HeartbeatMonitor;
-class PacketManager;
+struct ConnectionEvents;
+class HeartbeatChecker;
+class PacketRouter;
 class Reconnector;
 
-// 연결이 끊긴 뒤 응용에 알리는 내용
 struct DisconnectInfo
 {
-	// 서버가 끊기 전에 알려 준 이유. 알리지 않고 끊겼으면 없음
+	// 서버가 알리지 않고 끊었으면 없음
 	std::optional<DisconnectReason> reason;
-	// 엔진이 다시 접속할 예정인지
-	bool reconnecting = false;
+	bool willReconnect = false;
 };
 
 // registerHandler()는 파생 클래스 생성자에서 run() 전에 호출
@@ -41,12 +39,11 @@ public:
 	Client(const Client&) = delete;
 	Client& operator=(const Client&) = delete;
 
-	// 설정의 log대로 로그 출력을 시작하고 실행함. 설정 검사도 여기서 하며 실패하면 이유를 남기고 1 반환
-	// 처음 접속에 실패해도 1. 접속하면 onRun()이 끝날 때 서버에 Logout을 보내고 닫은 뒤 0 반환
+	// 설정이 틀리거나 처음 접속에 실패하면 1 반환
+	// onRun()이 끝나면 세션이 있을 때 Logout을 보내고 닫은 뒤 0 반환
 	int run();
 
 protected:
-	// 설정 파일에서 읽으려면 ClientSettings::create() 또는 ClientSettings::fromJson()을 씀
 	// protocolVersion은 응용 프로토콜 버전. 서버와 다르면 서버가 VersionMismatch로 끊음
 	Client(const ClientSettings& settings, std::uint16_t protocolVersion);
 
@@ -70,51 +67,67 @@ protected:
 
 	virtual void onDisconnected(const std::shared_ptr<Connection>&, const DisconnectInfo&) {}
 
-	// 다시 접속해 이전 세션을 이어 감
+	// 재접속했고 이전 세션이 이어짐
 	virtual void onSessionResumed() {}
 
-	// 다시 접속했지만 세션이 이미 끝나 로그인부터 다시 해야 함
+	// 재접속했지만 세션이 이미 끝나 로그인부터 다시 해야 함
 	virtual void onSessionLost() {}
 
-	// 연결이 없으면 버림. 어느 스레드에서 불러도 됨
+	// 어느 스레드에서든 호출 가능. 연결이 없으면 버림
 	void send(const PacketBase& packet);
 
 	bool isConnected() const { return m_connected; }
 
 private:
-	// m_settings를 검증하고 실행
-	int start();
+	bool validateSettings() const;
 
-	// 엔진 제어 패킷(ServerHello, Disconnect, 세션) 처리 등록
-	void registerControlHandlers();
+	bool callOnStart();
 
-	// transport가 연결 이벤트를 알릴 콜백. 하트비트, 재접속과 응용 훅으로 이어 줌
-	std::shared_ptr<const ConnectionEventHandler> makeConnectionEvents();
+	// 지원하지 않는 transport면 false
+	bool createComponents();
 
-	// 네트워크 스레드에서 접속을 시도함
+	// 메인 스레드에서 결과를 기다림. 처음 접속은 실패해도 다시 시도하지 않음
+	bool connectFirstTime();
+
+	// 메인 스레드에서 네트워크 스레드의 quit()이 끝날 때까지 기다림
+	void quitAndWait();
+
+	// 아래는 네트워크 스레드에서만 호출
 	void connect(std::function<void(bool connected)> onResult);
 
-	// onRun()이 끝남. 세션이 있으면 Logout을 보내고 닫음. 네트워크 스레드에서 호출
 	void quit();
+
+	void handleConnected(const std::shared_ptr<Connection>& connection);
+
+	void handleDisconnected(const std::shared_ptr<Connection>& connection);
+
+	bool handleServerHello(const std::shared_ptr<Connection>& connection, PacketReader& body);
+
+	bool handleDisconnectNotice(PacketReader& body);
+
+	bool handleSessionStarted(PacketReader& body);
+
+	bool handleSessionResumed(PacketReader& body);
+
+	bool handleResumeFailed(PacketReader& body);
 
 	bool addPacketDispatcher(std::uint16_t id, detail::PacketDispatcher dispatcher);
 
 private:
-	// 뒤에 둔 것이 먼저 소멸함. 재접속 타이머 → 하트비트 → transport(네트워크 스레드) → PacketManager 순
-	std::unique_ptr<PacketManager> m_packetManager;
-	// run() 때 settings.transport에 맞게 만듦
+	// 뒤에 둔 것이 먼저 소멸함. 재접속 타이머 → 하트비트 → transport(네트워크 스레드) → PacketRouter 순
+	std::unique_ptr<PacketRouter> m_packetRouter;
 	std::unique_ptr<ClientTransport> m_transport;
-	std::shared_ptr<const ConnectionEventHandler> m_connectionEvents;
-	std::unique_ptr<HeartbeatMonitor> m_heartbeatMonitor;
+	std::shared_ptr<const ConnectionEvents> m_connectionEvents;
+	std::unique_ptr<HeartbeatChecker> m_heartbeatChecker;
 	std::unique_ptr<Reconnector> m_reconnector;
 	const ClientSettings m_settings;
 	const std::uint16_t m_protocolVersion;
-	bool m_running = false;
+	bool m_runCalled = false;
 	// 메인 스레드가 읽으므로 atomic
 	std::atomic<bool> m_connected{ false };
 
 	// 아래는 네트워크 스레드에서만 사용
-	// 서버가 준 재접속 토큰. 비어 있으면 세션 없음
+	// 비어 있으면 세션 없음
 	std::string m_sessionToken;
 	// 서버가 Disconnect로 알려 준 이유. 연결이 끊길 때 응용에 넘기고 지움
 	std::optional<DisconnectReason> m_disconnectReason;

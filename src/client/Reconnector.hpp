@@ -15,9 +15,9 @@ class Reconnector
 {
 public:
 	using ConnectResult = ClientTransport::ConnectResult;
-	using Attempt = std::function<void(ConnectResult onResult)>;
+	using TryConnect = std::function<void(ConnectResult onResult)>;
 
-	Reconnector(boost::asio::any_io_executor executor, std::chrono::seconds maxDelay, Attempt attempt);
+	Reconnector(boost::asio::any_io_executor executor, std::chrono::seconds maxDelay, TryConnect tryConnect);
 
 	Reconnector(const Reconnector&) = delete;
 	Reconnector& operator=(const Reconnector&) = delete;
@@ -25,7 +25,7 @@ public:
 	void schedule();
 
 	// 접속에 성공함. 다음에 끊기면 1초부터 다시 셈
-	void reset() { m_attempts = 0; }
+	void resetDelay() { m_attemptCount = 0; }
 
 	// 더 시도하지 않음. 진행 중인 시도의 결과도 무시함
 	void cancel();
@@ -33,8 +33,8 @@ public:
 private:
 	boost::asio::steady_timer m_timer;
 	const std::chrono::seconds m_maxDelay;
-	const Attempt m_attempt;
-	int m_attempts = 0;
+	const TryConnect m_tryConnect;
+	int m_attemptCount = 0;
 	bool m_cancelled = false;
 };
 }

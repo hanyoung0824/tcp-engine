@@ -34,7 +34,7 @@ namespace
 	constexpr const char* consolePattern = "[%H:%M:%S.%e][%^%l%$][%n][thread %t] %v";
 	constexpr const char* filePattern = "[%Y-%m-%d %H:%M:%S.%e][%l][%n][thread %t] %v";
 
-	constexpr std::size_t sourceCount = static_cast<std::size_t>(LogSource::MaxCount);
+	constexpr std::size_t sourceCount = static_cast<std::size_t>(LogSource::Count);
 
 	// %n으로 줄마다 찍히는 이름
 	constexpr std::array<const char*, sourceCount> sourceNames{ "engine", "app" };

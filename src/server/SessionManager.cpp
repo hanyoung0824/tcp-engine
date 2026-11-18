@@ -96,7 +96,7 @@ SessionManager::~SessionManager()
 	endAll();
 }
 
-std::shared_ptr<Session> SessionManager::start(const std::shared_ptr<Connection>& connection)
+std::shared_ptr<Session> SessionManager::startSession(const std::shared_ptr<Connection>& connection)
 {
 	if (m_stopped || connection->isClosed()) {
 		return nullptr;

@@ -14,9 +14,9 @@
 namespace tcpengine
 {
 // Transport가 연결 이벤트를 Server/Client에 알리는 통로. 프로토콜과 무관함
-// 모든 연결이 공유하므로 shared_ptr<const ConnectionEventHandler>로 넘김
+// 모든 연결이 공유하므로 shared_ptr<const ConnectionEvents>로 넘김
 // 콜백은 모두 필수라 쓰는 쪽은 비었는지 확인하지 않음
-struct ConnectionEventHandler
+struct ConnectionEvents
 {
 	using ConnectionCallback = std::function<void(const std::shared_ptr<Connection>& connection)>;
 
@@ -25,13 +25,13 @@ struct ConnectionEventHandler
 		const std::shared_ptr<Connection>& connection, std::span<const std::uint8_t> data)>;
 
 	// 하나라도 비어 있으면 std::invalid_argument
-	ConnectionEventHandler(ConnectionCallback onConnected, ReceiveHandler onReceive, ConnectionCallback onDisconnected)
+	ConnectionEvents(ConnectionCallback onConnected, ReceiveHandler onReceive, ConnectionCallback onDisconnected)
 		: onConnected(std::move(onConnected)),
 		onReceive(std::move(onReceive)),
 		onDisconnected(std::move(onDisconnected))
 	{
 		if (!this->onConnected || !this->onReceive || !this->onDisconnected) {
-			throw std::invalid_argument("ConnectionEventHandler needs every callback");
+			throw std::invalid_argument("ConnectionEvents needs every callback");
 		}
 	}
 

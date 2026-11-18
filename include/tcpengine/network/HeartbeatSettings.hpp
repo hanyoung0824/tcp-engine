@@ -25,6 +25,10 @@ struct HeartbeatSettings
 		if (timeout.count() != 0 && timeout <= interval) {
 			throw std::invalid_argument("heartbeat timeout must be 0 or longer than interval");
 		}
+		// ServerHello에 uint16 초로 실어 보냄
+		if (interval.count() > 65535 || timeout.count() > 65535) {
+			throw std::invalid_argument("heartbeat values must be 65535 seconds or less");
+		}
 	}
 };
 }

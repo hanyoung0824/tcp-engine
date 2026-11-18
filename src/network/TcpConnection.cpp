@@ -18,10 +18,10 @@ namespace
 	constexpr std::size_t receiveBufferSize = 64 * 1024;
 }
 
-TcpConnection::TcpConnection(tcp::socket socket, std::shared_ptr<const ConnectionEventHandler> handler,
+TcpConnection::TcpConnection(tcp::socket socket, std::shared_ptr<const ConnectionEvents> events,
 	ConnectionId id, ConnectionOptions options, CloseCallback onClosed)
 	: m_socket(std::move(socket)),
-	m_handler(std::move(handler)),
+	m_events(std::move(events)),
 	m_id(id),
 	m_options(options),
 	m_closeTimer(m_socket.get_executor()),
@@ -46,7 +46,7 @@ void TcpConnection::start()
 {
 	engineLogInfo("Connected: ", m_address);
 
-	m_handler->onConnected(shared_from_this());
+	m_events->onConnected(shared_from_this());
 
 	// onConnected에서 close()했어도 상대가 끊는 것을 알아야 하므로 읽기는 시작함
 	if (m_state != State::Closed) {
@@ -135,7 +135,7 @@ void TcpConnection::finish(SocketClose how)
 	}
 	m_socket.close(ec);
 
-	m_handler->onDisconnected(shared_from_this());
+	m_events->onDisconnected(shared_from_this());
 
 	if (m_onClosed) {
 		m_onClosed(m_id);
@@ -182,7 +182,7 @@ void TcpConnection::onRead(const boost::system::error_code& ec, std::size_t leng
 
 	m_receivedLength += length;
 
-	const std::optional<std::size_t> result = m_handler->onReceive(shared_from_this(),
+	const std::optional<std::size_t> result = m_events->onReceive(shared_from_this(),
 		std::span<const std::uint8_t>(m_receiveBuffer.data(), m_receivedLength));
 
 	if (m_state == State::Closed) {

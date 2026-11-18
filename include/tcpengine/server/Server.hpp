@@ -18,15 +18,12 @@ class io_context;
 
 namespace tcpengine
 {
-class AdmissionControl;
-struct ConnectionEventHandler;
-class HeartbeatMonitor;
-struct NetworkStats;
-class PacketManager;
-class ServerTransport;
+class ConnectionGuard;
+class ConnectionManager;
+class PacketRouter;
+class ServerMonitor;
 class SessionManager;
-class StatsReporter;
-class ShutdownSignal;
+class ShutdownSignalHandler;
 
 // registerHandler()는 파생 클래스 생성자에서 run() 전에 호출
 // 패킷 핸들러에서 예외가 나면 그 연결만 끊음. 그 밖에서 잡히지 않은 예외는 로그를 남기고 abort()하여 덤프를 남김
@@ -38,19 +35,16 @@ public:
 	Server(const Server&) = delete;
 	Server& operator=(const Server&) = delete;
 
-	// 설정의 log대로 로그 출력을 시작하고 실행함. 설정 검사도 여기서 하며 실패하면 이유를 남기고 1 반환
-	// 한 번만 호출할 수 있음
+	// 한 번만 호출 가능. 설정이 틀리거나 시작하지 못하면 1 반환
 	int run();
 
-	// 어느 스레드에서 불러도 되고 여러 번 불러도 한 번만 처리함. SIGINT, SIGTERM도 이 함수를 거침
-	// 접속 받기 중단 → 세션 모두 끝냄(onSessionEnded) → 연결마다 ServerShutdown을 알리고 남은 데이터를 보낸 뒤 닫음 → run() 반환
-	// 신호가 한 번 더 오면 연결이 닫히기를 기다리지 않고 바로 run()을 끝냄
-	// 종료 중에는 새 연결과 새 세션을 받지 않음. run() 전에 부르면 run()이 시작하자마자 종료함
+	// 어느 스레드에서든 호출 가능, 여러 번 불러도 한 번만 처리. SIGINT, SIGTERM도 이 함수를 거침
+	// 세션을 모두 끝내고 연결마다 ServerShutdown을 알리고 닫은 뒤 run()이 반환됨
+	// 신호가 한 번 더 오면 연결이 닫히기를 기다리지 않고 바로 반환됨
 	void stop();
 
 protected:
-	// 설정 파일에서 읽으려면 ServerSettings::create() 또는 ServerSettings::fromJson()을 씀
-	// protocolVersion은 응용 프로토콜 버전. 클라이언트가 접속 직후 알려 준 값과 다르면 VersionMismatch로 끊음
+	// protocolVersion은 응용 프로토콜 버전. 클라이언트가 알려 준 값과 다르면 VersionMismatch로 끊음
 	Server(const ServerSettings& settings, std::uint16_t protocolVersion);
 
 	// 세션이 있는 연결(로그인 후)에서만 받는 패킷. 세션 없이 오면 엔진이 버리고 로그를 남김
@@ -98,48 +92,54 @@ protected:
 	virtual void onSessionEnded(const std::shared_ptr<Session>&, SessionEndReason) {}
 
 private:
-	// m_settings를 검증하고 실행
-	int start();
+	bool validateSettings() const;
 
-	// 네트워크 스레드에서 종료 과정을 진행
-	void shutdown();
+	bool callOnStart();
 
-	// 두 번째 종료 신호. 연결이 닫히기를 기다리지 않고 run()을 끝냄
+	void createComponents();
+
+	void runUntilStopped();
+
+	void destroyComponents();
+
+	// 네트워크 스레드에서만 호출
+	void gracefulStop();
+
+	// 두 번째 종료 신호. 연결이 닫히기를 기다리지 않음
 	void forceStop();
 
-	// 클라이언트에 이유를 알리고 정상 종료함
 	void disconnect(const std::shared_ptr<Connection>& connection, DisconnectReason reason);
 
-	// 엔진 제어 패킷(ClientHello, Resume, Logout) 처리 등록
-	void registerControlHandlers();
+	void handleConnected(const std::shared_ptr<Connection>& connection);
 
-	// transport가 연결 이벤트를 알릴 콜백. 하트비트, 세션, 응용 훅으로 이어 줌
-	std::shared_ptr<const ConnectionEventHandler> makeConnectionEvents(std::shared_ptr<const Connection::Buffer> serverHello);
+	void handleDisconnected(const std::shared_ptr<Connection>& connection);
 
-	// 세션 콜백을 응용 훅(onSession*)으로 이어 줌
-	void createSessionManager();
+	void handleSessionStarted(const std::shared_ptr<Session>& session);
+
+	void handleSessionResumed(const std::shared_ptr<Session>& session);
+
+	bool handleResume(const std::shared_ptr<Connection>& connection, PacketReader& body);
+
+	bool handleLogout(const std::shared_ptr<Connection>& connection, PacketReader& body);
 
 	bool addPacketDispatcher(std::uint16_t id, detail::PacketDispatcher dispatcher);
 
 	bool addSessionDispatcher(std::uint16_t id, detail::TargetDispatcher<Session> dispatcher);
 
 private:
-	// 네트워크 이벤트 루프. Server와 수명이 같아 stop()이 언제든 작업을 넘길 수 있음
-	// 멈춘 뒤 남은 핸들러가 다른 멤버를 잡고 있을 수 있으므로 가장 앞에 두어 가장 나중에 소멸
+	// Server와 수명이 같아 stop()이 언제든 작업을 넘길 수 있음
+	// 멈춘 뒤 남은 핸들러가 다른 멤버를 잡고 있을 수 있어 가장 나중에 소멸
 	std::unique_ptr<boost::asio::io_context> m_ioContext;
-	std::unique_ptr<PacketManager> m_packetManager;
-	// 아래는 start() 동안만 있음
-	std::shared_ptr<NetworkStats> m_networkStats;
-	std::unique_ptr<HeartbeatMonitor> m_heartbeatMonitor;
-	// 접속 → ClientHello → 로그인 순서와 수신 제한을 지키는지 봄
-	std::unique_ptr<AdmissionControl> m_admissionControl;
+	std::unique_ptr<PacketRouter> m_packetRouter;
+	// 아래는 run() 동안만 있음. 연결 이벤트가 앞의 것들을 부르므로 이 순서로 만들고 반대로 없앰
+	std::unique_ptr<ServerMonitor> m_monitor;
+	std::unique_ptr<ConnectionGuard> m_connectionGuard;
 	std::unique_ptr<SessionManager> m_sessionManager;
-	std::unique_ptr<StatsReporter> m_statsReporter;
-	std::unique_ptr<ServerTransport> m_transport;
-	std::unique_ptr<ShutdownSignal> m_shutdownSignal;
+	std::unique_ptr<ConnectionManager> m_connectionManager;
+	std::unique_ptr<ShutdownSignalHandler> m_shutdownSignalHandler;
 	const ServerSettings m_settings;
 	const std::uint16_t m_protocolVersion;
-	bool m_running = false;
+	bool m_runCalled = false;
 	std::atomic<bool> m_stopRequested{ false };
 };
 }

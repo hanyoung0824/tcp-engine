@@ -1,4 +1,4 @@
-#include "HeartbeatMonitor.hpp"
+#include "HeartbeatChecker.hpp"
 
 #include "EngineLog.hpp"
 
@@ -6,7 +6,7 @@
 
 namespace tcpengine
 {
-HeartbeatMonitor::Entry::Entry(boost::asio::any_io_executor executor, const std::shared_ptr<Connection>& connection,
+HeartbeatChecker::Entry::Entry(boost::asio::any_io_executor executor, const std::shared_ptr<Connection>& connection,
 	const HeartbeatSettings& settings, std::shared_ptr<const Connection::Buffer> pingData)
 	: connection(connection),
 	settings(settings),
@@ -16,13 +16,13 @@ HeartbeatMonitor::Entry::Entry(boost::asio::any_io_executor executor, const std:
 {
 }
 
-HeartbeatMonitor::HeartbeatMonitor(boost::asio::any_io_executor executor, std::shared_ptr<NetworkStats> stats)
+HeartbeatChecker::HeartbeatChecker(boost::asio::any_io_executor executor, std::shared_ptr<NetworkStats> stats)
 	: m_executor(std::move(executor)),
 	m_stats(std::move(stats))
 {
 }
 
-void HeartbeatMonitor::start(const std::shared_ptr<Connection>& connection, const HeartbeatSettings& settings,
+void HeartbeatChecker::start(const std::shared_ptr<Connection>& connection, const HeartbeatSettings& settings,
 	std::shared_ptr<const Connection::Buffer> pingData)
 {
 	const Connection::ConnectionId id = connection->getId();
@@ -36,7 +36,7 @@ void HeartbeatMonitor::start(const std::shared_ptr<Connection>& connection, cons
 	m_entries.emplace(id, std::move(entry));
 }
 
-void HeartbeatMonitor::onReceived(const Connection& connection)
+void HeartbeatChecker::onReceived(const Connection& connection)
 {
 	const auto it = m_entries.find(connection.getId());
 	if (it != m_entries.end()) {
@@ -44,13 +44,13 @@ void HeartbeatMonitor::onReceived(const Connection& connection)
 	}
 }
 
-void HeartbeatMonitor::stop(const Connection& connection)
+void HeartbeatChecker::stop(const Connection& connection)
 {
 	// 타이머가 함께 소멸하면서 대기 중인 콜백은 취소됨
 	m_entries.erase(connection.getId());
 }
 
-void HeartbeatMonitor::schedule(Connection::ConnectionId id, Entry& entry)
+void HeartbeatChecker::schedule(Connection::ConnectionId id, Entry& entry)
 {
 	entry.timer.expires_after(entry.settings.interval);
 	entry.timer.async_wait([this, id](const boost::system::error_code& ec) {
@@ -60,7 +60,7 @@ void HeartbeatMonitor::schedule(Connection::ConnectionId id, Entry& entry)
 	});
 }
 
-void HeartbeatMonitor::onTimer(Connection::ConnectionId id)
+void HeartbeatChecker::onTimer(Connection::ConnectionId id)
 {
 	const auto it = m_entries.find(id);
 	if (it == m_entries.end()) {

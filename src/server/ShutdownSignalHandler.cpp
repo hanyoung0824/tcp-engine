@@ -1,4 +1,4 @@
-#include "ShutdownSignal.hpp"
+#include "ShutdownSignalHandler.hpp"
 
 #include "EngineLog.hpp"
 
@@ -6,7 +6,7 @@
 
 namespace tcpengine
 {
-ShutdownSignal::ShutdownSignal(boost::asio::any_io_executor executor, std::function<void()> onShutdown,
+ShutdownSignalHandler::ShutdownSignalHandler(boost::asio::any_io_executor executor, std::function<void()> onShutdown,
 	std::function<void()> onForce)
 	: m_signals(std::move(executor), SIGINT, SIGTERM),
 	m_onShutdown(std::move(onShutdown)),
@@ -15,7 +15,7 @@ ShutdownSignal::ShutdownSignal(boost::asio::any_io_executor executor, std::funct
 	wait();
 }
 
-void ShutdownSignal::wait()
+void ShutdownSignalHandler::wait()
 {
 	m_signals.async_wait([this](const boost::system::error_code& ec, int signalNumber) {
 		if (ec) {

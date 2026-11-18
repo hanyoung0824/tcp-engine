@@ -71,15 +71,15 @@ namespace
 	};
 }
 
-TcpConnectionRegistry::TcpConnectionRegistry(std::shared_ptr<const ConnectionEventHandler> handler, ConnectionOptions options,
+TcpConnectionRegistry::TcpConnectionRegistry(std::shared_ptr<const ConnectionEvents> events, ConnectionOptions options,
 	std::size_t maxConnections)
-	: m_handler(std::move(handler)),
+	: m_events(std::move(events)),
 	m_options(options),
 	m_maxConnections(maxConnections)
 {
 }
 
-void TcpConnectionRegistry::createConnection(boost::asio::ip::tcp::socket socket)
+void TcpConnectionRegistry::addConnection(boost::asio::ip::tcp::socket socket)
 {
 	// 종료 직전에 수락된 소켓. 소멸하면서 닫힘
 	if (m_state != State::Open) {
@@ -93,7 +93,7 @@ void TcpConnectionRegistry::createConnection(boost::asio::ip::tcp::socket socket
 	}
 
 	const Connection::ConnectionId id = m_nextId++;
-	auto connection = std::make_shared<TcpConnection>(std::move(socket), m_handler, id, m_options,
+	auto connection = std::make_shared<TcpConnection>(std::move(socket), m_events, id, m_options,
 		[this](Connection::ConnectionId closedId) { removeConnection(closedId); });
 
 	m_connections.emplace(id, connection);

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "LoginTimeoutMonitor.hpp"
+#include "LoginDeadline.hpp"
 #include "NetworkStats.hpp"
 #include "ReceiveRateLimiter.hpp"
 #include "tcpengine/network/Connection.hpp"
@@ -20,7 +20,7 @@ namespace tcpengine
 // 새 연결이 정상 클라이언트로 인정받는 과정을 맡음. 전송 방식과 무관하며, 연결 객체의 목록은 transport가 관리함
 // 접속 → ClientHello로 버전 확인 → 로그인(세션 시작) 순서를 지키는지, 너무 많이 보내지 않는지 봄
 // 네트워크 스레드에서만 사용
-class AdmissionControl
+class ConnectionGuard
 {
 public:
 	struct Settings
@@ -33,11 +33,11 @@ public:
 	// 이유를 알리고 정상 종료함
 	using Disconnect = std::function<void(const std::shared_ptr<Connection>& connection, DisconnectReason reason)>;
 
-	AdmissionControl(boost::asio::any_io_executor executor, const Settings& settings, std::shared_ptr<NetworkStats> stats,
+	ConnectionGuard(boost::asio::any_io_executor executor, const Settings& settings, std::shared_ptr<NetworkStats> stats,
 		Disconnect disconnect);
 
-	AdmissionControl(const AdmissionControl&) = delete;
-	AdmissionControl& operator=(const AdmissionControl&) = delete;
+	ConnectionGuard(const ConnectionGuard&) = delete;
+	ConnectionGuard& operator=(const ConnectionGuard&) = delete;
 
 	void onConnected(const std::shared_ptr<Connection>& connection);
 
@@ -53,14 +53,14 @@ public:
 	bool handleClientHello(const std::shared_ptr<Connection>& connection, PacketReader& body);
 
 	// ClientHello로 버전 확인을 마쳤는지
-	bool isGreeted(const Connection& connection) const;
+	bool isHandshakeDone(const Connection& connection) const;
 
 private:
 	const Settings m_settings;
 	const std::shared_ptr<NetworkStats> m_stats;
 	const Disconnect m_disconnect;
 	ReceiveRateLimiter m_receiveRateLimiter;
-	LoginTimeoutMonitor m_loginTimeoutMonitor;
-	std::unordered_set<Connection::ConnectionId> m_greetedConnections;
+	LoginDeadline m_loginDeadline;
+	std::unordered_set<Connection::ConnectionId> m_handshakeDoneConnections;
 };
 }

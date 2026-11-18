@@ -59,7 +59,7 @@ ClientSettings ClientSettings::fromJson(const nlohmann::json& file)
 	return settings;
 }
 
-ClientSettings ClientSettings::create(const std::filesystem::path& path)
+ClientSettings ClientSettings::fromFile(const std::filesystem::path& path)
 {
 	try {
 		return fromJson(loadJsonFile(path));

@@ -8,8 +8,8 @@ using asio::ip::tcp;
 namespace tcpengine
 {
 TcpServerTransport::TcpServerTransport(asio::any_io_executor executor, unsigned short port, ConnectionOptions connectionOptions, std::size_t maxConnections,
-	std::shared_ptr<const ConnectionEventHandler> handler)
-	: m_connectionRegistry(std::move(handler), connectionOptions, maxConnections),
+	std::shared_ptr<const ConnectionEvents> events)
+	: m_connectionRegistry(std::move(events), connectionOptions, maxConnections),
 	m_listener(std::move(executor), tcp::endpoint(tcp::v4(), port))
 {
 }
@@ -21,10 +21,10 @@ bool TcpServerTransport::start()
 	}
 
 	m_listener.start([this](tcp::socket socket) {
-		m_connectionRegistry.createConnection(std::move(socket));
+		m_connectionRegistry.addConnection(std::move(socket));
 	});
 
-	engineLogInfo("Server listening on ", m_listener.getEndPoint());
+	engineLogInfo("Server listening on ", m_listener.getEndpoint());
 	return true;
 }
 

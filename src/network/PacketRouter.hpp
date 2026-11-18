@@ -16,7 +16,7 @@
 namespace tcpengine
 {
 // 받은 바이트를 패킷으로 잘라 제어 패킷 핸들러나 응용 핸들러로 보냄. 제어 패킷 형식은 ControlPackets.hpp
-class PacketManager
+class PacketRouter
 {
 public:
 	// 본문(ControlType 다음부터)을 읽어 처리. 본문이 잘못되면 false
@@ -25,10 +25,10 @@ public:
 	// 패킷 하나를 처리하기 전에 부름. false면 그 패킷을 처리하지 않고 연결을 끊음
 	using PacketFilter = std::function<bool(const std::shared_ptr<Connection>& connection, std::uint16_t packetId)>;
 
-	PacketManager() = default;
+	PacketRouter() = default;
 
-	PacketManager(const PacketManager&) = delete;
-	PacketManager& operator=(const PacketManager&) = delete;
+	PacketRouter(const PacketRouter&) = delete;
+	PacketRouter& operator=(const PacketRouter&) = delete;
 
 	bool addDispatcher(std::uint16_t id, detail::PacketDispatcher dispatcher);
 
@@ -37,7 +37,7 @@ public:
 
 	void setPacketFilter(PacketFilter filter);
 
-	std::optional<std::size_t> onReceive(const std::shared_ptr<Connection>& connection,
+	std::optional<std::size_t> processReceived(const std::shared_ptr<Connection>& connection,
 		std::span<const std::uint8_t> data) const;
 
 private:

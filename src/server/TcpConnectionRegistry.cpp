@@ -72,10 +72,10 @@ namespace
 }
 
 TcpConnectionRegistry::TcpConnectionRegistry(std::shared_ptr<const ConnectionEvents> events, ConnectionOptions options,
-	std::size_t maxConnections)
+	ServerTransport::CanAccept canAccept)
 	: m_events(std::move(events)),
 	m_options(options),
-	m_maxConnections(maxConnections)
+	m_canAccept(std::move(canAccept))
 {
 }
 
@@ -87,7 +87,7 @@ void TcpConnectionRegistry::addConnection(boost::asio::ip::tcp::socket socket)
 		return;
 	}
 
-	if (m_connections.size() >= m_maxConnections) {
+	if (!m_canAccept(m_connections.size())) {
 		refuse(std::move(socket));
 		return;
 	}
@@ -108,7 +108,7 @@ void TcpConnectionRegistry::refuse(boost::asio::ip::tcp::socket socket)
 	++m_refusedSinceLog;
 	const auto now = std::chrono::steady_clock::now();
 	if (now - m_lastRefusalLog >= std::chrono::seconds(1)) {
-		engineLogWarning("Server full (", m_maxConnections, " connections), refused ", m_refusedSinceLog, " connection(s)");
+		engineLogWarning("Server full (", m_connections.size(), " connections), refused ", m_refusedSinceLog, " connection(s)");
 		m_refusedSinceLog = 0;
 		m_lastRefusalLog = now;
 	}

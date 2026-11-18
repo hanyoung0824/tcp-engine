@@ -18,7 +18,6 @@ class io_context;
 
 namespace tcpengine
 {
-class ConnectionGuard;
 class ConnectionManager;
 class PacketRouter;
 class ServerMonitor;
@@ -108,10 +107,6 @@ private:
 	// 두 번째 종료 신호. 연결이 닫히기를 기다리지 않음
 	void forceStop();
 
-	void disconnect(const std::shared_ptr<Connection>& connection, DisconnectReason reason);
-
-	void handleConnected(const std::shared_ptr<Connection>& connection);
-
 	void handleDisconnected(const std::shared_ptr<Connection>& connection);
 
 	void handleSessionStarted(const std::shared_ptr<Session>& session);
@@ -133,7 +128,6 @@ private:
 	std::unique_ptr<PacketRouter> m_packetRouter;
 	// 아래는 run() 동안만 있음. 연결 이벤트가 앞의 것들을 부르므로 이 순서로 만들고 반대로 없앰
 	std::unique_ptr<ServerMonitor> m_monitor;
-	std::unique_ptr<ConnectionGuard> m_connectionGuard;
 	std::unique_ptr<SessionManager> m_sessionManager;
 	std::unique_ptr<ConnectionManager> m_connectionManager;
 	std::unique_ptr<ShutdownSignalHandler> m_shutdownSignalHandler;

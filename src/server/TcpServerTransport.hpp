@@ -16,7 +16,7 @@ namespace tcpengine
 class TcpServerTransport final : public ServerTransport
 {
 public:
-	TcpServerTransport(boost::asio::any_io_executor executor, unsigned short port, ConnectionOptions connectionOptions, std::size_t maxConnections,
+	TcpServerTransport(boost::asio::any_io_executor executor, unsigned short port, ConnectionOptions connectionOptions, CanAccept canAccept,
 		std::shared_ptr<const ConnectionEvents> events);
 
 	TcpServerTransport(const TcpServerTransport&) = delete;

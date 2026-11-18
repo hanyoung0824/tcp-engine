@@ -2,6 +2,7 @@
 
 #include "tcpengine/network/Connection.hpp"
 
+#include <cstddef>
 #include <functional>
 #include <memory>
 
@@ -12,6 +13,9 @@ namespace tcpengine
 class ServerTransport
 {
 public:
+	// 새 소켓을 받아도 되는지. false면 ServerFull을 알리고 닫음
+	using CanAccept = std::function<bool(std::size_t connectionCount)>;
+
 	virtual ~ServerTransport() = default;
 
 	virtual bool start() = 0;

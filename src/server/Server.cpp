@@ -1,6 +1,5 @@
 #include "tcpengine/server/Server.hpp"
 
-#include "ConnectionGuard.hpp"
 #include "ConnectionEvents.hpp"
 #include "ConnectionManager.hpp"
 #include "ControlPackets.hpp"
@@ -128,17 +127,6 @@ void Server::createComponents()
 		return ServerMonitor::SessionCounts{ m_sessionManager->getSessionCount(), m_sessionManager->getDetachedCount() };
 	});
 
-	m_connectionGuard = std::make_unique<ConnectionGuard>(executor,
-		ConnectionGuard::Settings{ m_protocolVersion, m_settings.receivePacketsPerSecond, m_settings.loginTimeout },
-		m_monitor->getStats(),
-		[this](const std::shared_ptr<Connection>& connection, DisconnectReason reason) { disconnect(connection, reason); });
-	m_packetRouter->setPacketFilter([this](const std::shared_ptr<Connection>& connection, std::uint16_t packetId) {
-		return m_connectionGuard->allowPacket(connection, packetId);
-	});
-	m_packetRouter->setControlHandler(ControlType::ClientHello, [this](const std::shared_ptr<Connection>& connection, PacketReader& body) {
-		return m_connectionGuard->handleClientHello(connection, body);
-	});
-
 	m_sessionManager = std::make_unique<SessionManager>(executor, m_settings.session.resumeTimeout,
 		SessionManager::Callbacks{
 			[this](const std::shared_ptr<Session>& session) { handleSessionStarted(session); },
@@ -153,14 +141,20 @@ void Server::createComponents()
 		return handleLogout(connection, body);
 	});
 
-	m_connectionManager = std::make_unique<ConnectionManager>(executor, m_settings, m_monitor->getStats(),
+	m_connectionManager = std::make_unique<ConnectionManager>(executor, m_settings, m_protocolVersion, m_monitor->getStats(),
 		control::serverHello(control::ServerHello{ m_settings.heartbeat }),
 		std::make_shared<const ConnectionEvents>(
-			[this](const std::shared_ptr<Connection>& connection) { handleConnected(connection); },
+			[this](const std::shared_ptr<Connection>& connection) { onConnected(connection); },
 			[this](const std::shared_ptr<Connection>& connection, std::span<const std::uint8_t> data) {
 				return m_packetRouter->processReceived(connection, data);
 			},
 			[this](const std::shared_ptr<Connection>& connection) { handleDisconnected(connection); }));
+	m_packetRouter->setPacketFilter([this](const std::shared_ptr<Connection>& connection, std::uint16_t packetId) {
+		return m_connectionManager->allowPacket(connection, packetId);
+	});
+	m_packetRouter->setControlHandler(ControlType::ClientHello, [this](const std::shared_ptr<Connection>& connection, PacketReader& body) {
+		return m_connectionManager->handleClientHello(connection, body);
+	});
 }
 
 void Server::runUntilStopped()
@@ -178,7 +172,6 @@ void Server::destroyComponents()
 	m_shutdownSignalHandler.reset();
 	m_connectionManager.reset();
 	m_sessionManager.reset();
-	m_connectionGuard.reset();
 	m_monitor.reset();
 }
 
@@ -208,41 +201,28 @@ void Server::forceStop()
 	m_ioContext->stop();
 }
 
-void Server::disconnect(const std::shared_ptr<Connection>& connection, DisconnectReason reason)
-{
-	connection->send(control::disconnect(reason));
-	connection->close();
-}
-
-void Server::handleConnected(const std::shared_ptr<Connection>& connection)
-{
-	m_connectionGuard->onConnected(connection);
-	onConnected(connection);
-}
-
 void Server::handleDisconnected(const std::shared_ptr<Connection>& connection)
 {
-	m_connectionGuard->onDisconnected(*connection);
 	onDisconnected(connection);
 	m_sessionManager->onConnectionClosed(*connection);
 }
 
 void Server::handleSessionStarted(const std::shared_ptr<Session>& session)
 {
-	m_connectionGuard->onLoggedIn(*session->getConnection());
+	m_connectionManager->onLoggedIn(*session->getConnection());
 	onSessionStarted(session);
 }
 
 void Server::handleSessionResumed(const std::shared_ptr<Session>& session)
 {
-	m_connectionGuard->onLoggedIn(*session->getConnection());
+	m_connectionManager->onLoggedIn(*session->getConnection());
 	onSessionResumed(session);
 }
 
 bool Server::handleResume(const std::shared_ptr<Connection>& connection, PacketReader& body)
 {
 	std::string token;
-	if (!m_connectionGuard->isHandshakeDone(*connection)
+	if (!m_connectionManager->isHandshakeDone(*connection)
 		|| !body.readString(token) || !body.isEnd() || token.size() != sessionTokenLength) {
 		return false;
 	}

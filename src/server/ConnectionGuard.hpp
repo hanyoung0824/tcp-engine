@@ -17,9 +17,8 @@
 
 namespace tcpengine
 {
-// 새 연결이 정상 클라이언트로 인정받는 과정을 맡음. 전송 방식과 무관하며, 연결 객체의 목록은 transport가 관리함
-// 접속 → ClientHello로 버전 확인 → 로그인(세션 시작) 순서를 지키는지, 너무 많이 보내지 않는지 봄
-// 네트워크 스레드에서만 사용
+// 연결을 받아 줘도 되는지 판단함. 전송 방식과 무관함
+// 최대 접속 수, 접속 → ClientHello로 버전 확인 → 로그인 순서, 수신량을 봄. 네트워크 스레드에서만 사용
 class ConnectionGuard
 {
 public:
@@ -28,6 +27,7 @@ public:
 		std::uint16_t appProtocolVersion = 0;
 		double receivePacketsPerSecond = 0;
 		std::chrono::seconds loginTimeout{};
+		std::size_t maxConnections = 0;
 	};
 
 	// 이유를 알리고 정상 종료함
@@ -38,6 +38,9 @@ public:
 
 	ConnectionGuard(const ConnectionGuard&) = delete;
 	ConnectionGuard& operator=(const ConnectionGuard&) = delete;
+
+	// 새 소켓을 연결로 만들기 전에 부름
+	bool canAccept(std::size_t connectionCount) const { return connectionCount < m_settings.maxConnections; }
 
 	void onConnected(const std::shared_ptr<Connection>& connection);
 

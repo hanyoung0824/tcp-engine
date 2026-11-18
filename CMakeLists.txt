@@ -58,8 +58,6 @@ tcp_engine_add_layer(tcp_engine_utility utility
 	${SOURCE_DIR}/utility/EngineLog.hpp
 	${SOURCE_DIR}/utility/Logger.hpp
 	${SOURCE_DIR}/utility/Logger.cpp
-	${SOURCE_DIR}/utility/LogSystem.hpp
-	${SOURCE_DIR}/utility/LogSystem.cpp
 	${SOURCE_DIR}/utility/LogSettings.cpp
 	${SOURCE_DIR}/utility/SettingsReader.hpp
 	${SOURCE_DIR}/utility/SettingsReader.cpp

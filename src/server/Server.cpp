@@ -71,8 +71,8 @@ std::shared_ptr<Session> Server::findSession(const std::shared_ptr<Connection>& 
 int Server::run()
 {
 	Logger::installTerminateHandler();
-	const ScopedLogFlush logFlush;
-	if (!Logger::start(m_settings.log)) {
+	const ScopedLogging logging(m_settings.log);
+	if (!logging.isStarted()) {
 		return 1;
 	}
 

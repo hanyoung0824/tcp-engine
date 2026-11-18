@@ -52,8 +52,8 @@ void Client::send(const PacketBase& packet)
 int Client::run()
 {
 	Logger::installTerminateHandler();
-	const ScopedLogFlush logFlush;
-	if (!Logger::start(m_settings.log)) {
+	const ScopedLogging logging(m_settings.log);
+	if (!logging.isStarted()) {
 		return 1;
 	}
 	return start();

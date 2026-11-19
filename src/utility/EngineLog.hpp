@@ -8,36 +8,36 @@
 // 로그 시스템을 시작하거나 flush하는 것은 Logger.hpp
 namespace tcpengine
 {
-bool isEngineLogEnabled(LogLevel level);
+    bool isEngineLogEnabled(LogLevel level);
 
-void writeEngineLog(LogLevel level, std::string message);
+    void writeEngineLog(LogLevel level, std::string message);
 
-// 걸러질 로그는 문자열을 만들기 전에 버림
-template <typename... Args> void engineLog(LogLevel level, const Args &...args)
-{
-    if (isEngineLogEnabled(level))
+    // 걸러질 로그는 문자열을 만들기 전에 버림
+    template <typename... Args> void engineLog(LogLevel level, const Args &...args)
     {
-        writeEngineLog(level, formatLog(args...));
+        if (isEngineLogEnabled(level))
+        {
+            writeEngineLog(level, formatLog(args...));
+        }
     }
-}
 
-template <typename... Args> void engineLogDebug(const Args &...args)
-{
-    engineLog(LogLevel::Debug, args...);
-}
+    template <typename... Args> void engineLogDebug(const Args &...args)
+    {
+        engineLog(LogLevel::Debug, args...);
+    }
 
-template <typename... Args> void engineLogInfo(const Args &...args)
-{
-    engineLog(LogLevel::Info, args...);
-}
+    template <typename... Args> void engineLogInfo(const Args &...args)
+    {
+        engineLog(LogLevel::Info, args...);
+    }
 
-template <typename... Args> void engineLogWarning(const Args &...args)
-{
-    engineLog(LogLevel::Warning, args...);
-}
+    template <typename... Args> void engineLogWarning(const Args &...args)
+    {
+        engineLog(LogLevel::Warning, args...);
+    }
 
-template <typename... Args> void engineLogError(const Args &...args)
-{
-    engineLog(LogLevel::Error, args...);
-}
+    template <typename... Args> void engineLogError(const Args &...args)
+    {
+        engineLog(LogLevel::Error, args...);
+    }
 } // namespace tcpengine

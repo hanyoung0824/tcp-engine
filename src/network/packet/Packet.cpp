@@ -4,16 +4,18 @@
 
 namespace tcpengine
 {
-std::shared_ptr<const PacketBuffer> PacketBase::serialize() const
-{
-    PacketWriter writer(getPacketId());
-    write(writer);
-
-    std::optional<PacketBuffer> buffer = writer.finish();
-    if (!buffer)
+    std::shared_ptr<const PacketBuffer> PacketBase::serialize() const
     {
-        return nullptr;
+        PacketWriter writer(getPacketId());
+        write(writer);
+
+        std::optional<PacketBuffer> buffer = writer.finish();
+
+        if (!buffer)
+        {
+            return nullptr;
+        }
+
+        return std::make_shared<const PacketBuffer>(std::move(*buffer));
     }
-    return std::make_shared<const PacketBuffer>(std::move(*buffer));
-}
 } // namespace tcpengine

@@ -12,321 +12,343 @@
 
 namespace tcpengine
 {
-namespace
-{
-// 재접속 토큰은 다른 사람이 추측하면 세션을 가로챌 수 있으므로 OS 난수로 만듦
-std::string makeToken()
-{
-    std::random_device random;
-    std::ostringstream token;
-    token << std::hex << std::setfill('0');
-    for (std::size_t i = 0; i < sessionTokenLength / 8; ++i)
+    namespace
     {
-        token << std::setw(8) << static_cast<std::uint32_t>(random());
-    }
-    return token.str();
-}
-
-// 세션이 끝나 연결을 닫기 전에 클라이언트에 알릴 이유. 스스로 나갔거나 연결이 없으면 알리지 않음
-std::optional<DisconnectReason> noticeFor(SessionEndReason reason)
-{
-    switch (reason)
-    {
-    case SessionEndReason::Closed:
-        return DisconnectReason::Kicked;
-    case SessionEndReason::ServerStopped:
-        return DisconnectReason::ServerShutdown;
-    case SessionEndReason::LoggedOut:
-    case SessionEndReason::Expired:
-        return std::nullopt;
-    }
-    return std::nullopt;
-}
-} // namespace
-
-class SessionManager::ServerSession final : public Session
-{
-  public:
-    ServerSession(SessionId id, std::string token, boost::asio::any_io_executor executor, SessionManager &owner)
-        : m_id(id), m_token(std::move(token)), m_expiryTimer(std::move(executor)), m_owner(&owner)
-    {
-    }
-
-    SessionId getId() const override
-    {
-        return m_id;
-    }
-
-    std::shared_ptr<Connection> getConnection() const override
-    {
-        return m_connection;
-    }
-
-    bool isEnded() const
-    {
-        return m_state == SessionState::Ended;
-    }
-
-    void close() override
-    {
-        if (!isEnded())
+        // 재접속 토큰은 다른 사람이 추측하면 세션을 가로챌 수 있으므로 OS 난수로 만듦
+        std::string makeToken()
         {
-            m_owner->end(*this, SessionEndReason::Closed, ConnectionClose::Graceful);
-        }
-    }
+            std::random_device random;
+            std::ostringstream token;
+            token << std::hex << std::setfill('0');
 
-    void reset() override
-    {
-        if (!isEnded())
-        {
-            m_owner->end(*this, SessionEndReason::Closed, ConnectionClose::Reset);
-        }
-    }
-
-  private:
-    friend class SessionManager;
-
-    const SessionId m_id;
-    const std::string m_token;
-    SessionState m_state = SessionState::Attached;
-    std::shared_ptr<Connection> m_connection;
-    boost::asio::steady_timer m_expiryTimer;
-    SessionManager *const m_owner;
-};
-
-SessionManager::SessionManager(boost::asio::any_io_executor executor, std::chrono::seconds resumeTimeout,
-                               Callbacks callbacks)
-    : m_executor(std::move(executor)), m_resumeTimeout(resumeTimeout), m_callbacks(std::move(callbacks))
-{
-}
-
-SessionManager::~SessionManager()
-{
-    // 정상 종료 때는 Server가 stop()을 먼저 부름. 여기서는 콜백 없이 타이머와 연결만 정리
-    m_callbacks = {};
-    endAll();
-}
-
-std::shared_ptr<Session> SessionManager::startSession(const std::shared_ptr<Connection> &connection)
-{
-    if (m_stopped || connection->isClosed())
-    {
-        return nullptr;
-    }
-    if (m_idsByConnection.contains(connection->getId()))
-    {
-        engineLogWarning("Connection ", connection->getAddress(), " already has a session");
-        return nullptr;
-    }
-
-    const Session::SessionId id = m_nextId++;
-    auto session = std::make_shared<ServerSession>(id, makeToken(), m_executor, *this);
-    m_sessions.emplace(id, session);
-    m_idsByToken.emplace(session->m_token, id);
-    attach(*session, connection);
-
-    connection->send(control::make(ControlType::SessionStarted, session->m_token));
-    engineLogInfo("Session ", id, " started for ", connection->getAddress());
-
-    if (m_callbacks.onStarted)
-    {
-        m_callbacks.onStarted(session);
-    }
-    return session;
-}
-
-std::shared_ptr<Session> SessionManager::find(const Connection &connection) const
-{
-    const auto idIt = m_idsByConnection.find(connection.getId());
-    if (idIt == m_idsByConnection.end())
-    {
-        return nullptr;
-    }
-    return m_sessions.at(idIt->second);
-}
-
-void SessionManager::resume(const std::shared_ptr<Connection> &connection, const std::string &token)
-{
-    const auto idIt = m_idsByToken.find(token);
-    if (m_stopped || idIt == m_idsByToken.end() || m_idsByConnection.contains(connection->getId()))
-    {
-        engineLogInfo("Resume failed from ", connection->getAddress());
-        connection->send(control::make(ControlType::ResumeFailed));
-        return;
-    }
-
-    const std::shared_ptr<ServerSession> session = m_sessions.at(idIt->second);
-    if (session->m_state == SessionState::Attached)
-    {
-        // 이전 연결이 끊긴 걸 아직 모르는 경우. 이전 연결을 버리고 새 연결로 넘김
-        const std::shared_ptr<Connection> previous = std::move(session->m_connection);
-        m_idsByConnection.erase(previous->getId());
-        previous->send(control::disconnect(DisconnectReason::Replaced));
-        previous->close();
-    }
-    else
-    {
-        session->m_expiryTimer.cancel();
-        changeState(*session, SessionState::Attached);
-    }
-
-    attach(*session, connection);
-    connection->send(control::make(ControlType::SessionResumed));
-    engineLogInfo("Session ", session->m_id, " resumed from ", connection->getAddress());
-
-    if (m_callbacks.onResumed)
-    {
-        m_callbacks.onResumed(session);
-    }
-}
-
-void SessionManager::onConnectionClosed(const Connection &connection)
-{
-    const auto idIt = m_idsByConnection.find(connection.getId());
-    if (idIt == m_idsByConnection.end())
-    {
-        return;
-    }
-
-    const std::shared_ptr<ServerSession> session = m_sessions.at(idIt->second);
-    m_idsByConnection.erase(idIt);
-    session->m_connection.reset();
-
-    if (m_resumeTimeout.count() == 0)
-    {
-        end(*session, SessionEndReason::Expired, ConnectionClose::Graceful);
-        return;
-    }
-
-    changeState(*session, SessionState::Detached);
-    engineLogInfo("Session ", session->m_id, " detached, waiting ", m_resumeTimeout.count(), "s for resume");
-    session->m_expiryTimer.expires_after(m_resumeTimeout);
-    session->m_expiryTimer.async_wait(
-        [this, weakSession = std::weak_ptr<ServerSession>(session)](const boost::system::error_code &ec) {
-            const std::shared_ptr<ServerSession> expired = weakSession.lock();
-            if (ec || !expired || expired->m_state != SessionState::Detached)
+            for (std::size_t i = 0; i < sessionTokenLength / 8; ++i)
             {
-                return;
+                token << std::setw(8) << static_cast<std::uint32_t>(random());
             }
-            engineLogInfo("Session ", expired->m_id, " expired");
-            end(*expired, SessionEndReason::Expired, ConnectionClose::Graceful);
-        });
 
-    if (m_callbacks.onDetached)
-    {
-        m_callbacks.onDetached(session);
-    }
-}
+            return token.str();
+        }
 
-void SessionManager::stop()
-{
-    m_stopped = true;
-    endAll();
-}
-
-void SessionManager::endAll()
-{
-    std::vector<std::shared_ptr<ServerSession>> sessions;
-    sessions.reserve(m_sessions.size());
-    for (const auto &[id, session] : m_sessions)
-    {
-        sessions.push_back(session);
-    }
-    for (const std::shared_ptr<ServerSession> &session : sessions)
-    {
-        end(*session, SessionEndReason::ServerStopped, ConnectionClose::Graceful);
-    }
-}
-
-const char *SessionManager::toString(SessionState state)
-{
-    switch (state)
-    {
-    case SessionState::Attached:
-        return "Attached";
-    case SessionState::Detached:
-        return "Detached";
-    case SessionState::Ended:
-        return "Ended";
-    }
-    return "Unknown";
-}
-
-bool SessionManager::canChange(SessionState from, SessionState to)
-{
-    switch (to)
-    {
-    case SessionState::Attached:
-        return from == SessionState::Detached;
-    case SessionState::Detached:
-        return from == SessionState::Attached;
-    case SessionState::Ended:
-        return from != SessionState::Ended;
-    }
-    return false;
-}
-
-void SessionManager::changeState(ServerSession &session, SessionState next)
-{
-    if (!canChange(session.m_state, next))
-    {
-        engineLogError("Unexpected session ", session.m_id, " state change: ", toString(session.m_state), " -> ",
-                       toString(next));
-    }
-    engineLogDebug("Session ", session.m_id, " state: ", toString(session.m_state), " -> ", toString(next));
-    session.m_state = next;
-}
-
-void SessionManager::attach(ServerSession &session, const std::shared_ptr<Connection> &connection)
-{
-    session.m_connection = connection;
-    m_idsByConnection[connection->getId()] = session.m_id;
-}
-
-void SessionManager::logout(const Connection &connection)
-{
-    const auto idIt = m_idsByConnection.find(connection.getId());
-    if (idIt != m_idsByConnection.end())
-    {
-        end(*m_sessions.at(idIt->second), SessionEndReason::LoggedOut, ConnectionClose::Graceful);
-    }
-}
-
-void SessionManager::end(ServerSession &session, SessionEndReason reason, ConnectionClose connectionClose)
-{
-    if (session.isEnded())
-    {
-        return;
-    }
-    changeState(session, SessionState::Ended);
-    session.m_expiryTimer.cancel();
-
-    // 콜백이 끝날 때까지 세션이 살아 있도록 잡아 둠
-    const std::shared_ptr<ServerSession> keep = m_sessions.at(session.m_id);
-    m_sessions.erase(session.m_id);
-    m_idsByToken.erase(session.m_token);
-
-    if (std::shared_ptr<Connection> connection = std::move(session.m_connection))
-    {
-        m_idsByConnection.erase(connection->getId());
-        if (connectionClose == ConnectionClose::Reset)
+        // 세션이 끝나 연결을 닫기 전에 클라이언트에 알릴 이유. 스스로 나갔거나 연결이 없으면 알리지 않음
+        std::optional<DisconnectReason> noticeFor(SessionEndReason reason)
         {
-            connection->reset();
+            switch (reason)
+            {
+                case SessionEndReason::Closed:
+                    return DisconnectReason::Kicked;
+                case SessionEndReason::ServerStopped:
+                    return DisconnectReason::ServerShutdown;
+                case SessionEndReason::LoggedOut:
+                case SessionEndReason::Expired:
+                    return std::nullopt;
+            }
+
+            return std::nullopt;
+        }
+    } // namespace
+
+    class SessionManager::ServerSession final : public Session
+    {
+        public:
+            ServerSession(SessionId id, std::string token, boost::asio::any_io_executor executor, SessionManager &owner)
+                : m_id(id), m_token(std::move(token)), m_expiryTimer(std::move(executor)), m_owner(&owner)
+            {
+            }
+
+            SessionId getId() const override
+            {
+                return m_id;
+            }
+
+            std::shared_ptr<Connection> getConnection() const override
+            {
+                return m_connection;
+            }
+
+            bool isEnded() const
+            {
+                return m_state == SessionState::Ended;
+            }
+
+            void close() override
+            {
+                if (!isEnded())
+                {
+                    m_owner->end(*this, SessionEndReason::Closed, ConnectionClose::Graceful);
+                }
+            }
+
+            void reset() override
+            {
+                if (!isEnded())
+                {
+                    m_owner->end(*this, SessionEndReason::Closed, ConnectionClose::Reset);
+                }
+            }
+
+        private:
+            friend class SessionManager;
+
+            const SessionId m_id;
+            const std::string m_token;
+            SessionState m_state = SessionState::Attached;
+            std::shared_ptr<Connection> m_connection;
+            boost::asio::steady_timer m_expiryTimer;
+            SessionManager *const m_owner;
+    };
+
+    SessionManager::SessionManager(boost::asio::any_io_executor executor, std::chrono::seconds resumeTimeout,
+                                   Callbacks callbacks)
+        : m_executor(std::move(executor)), m_resumeTimeout(resumeTimeout), m_callbacks(std::move(callbacks))
+    {
+    }
+
+    SessionManager::~SessionManager()
+    {
+        // 정상 종료 때는 Server가 stop()을 먼저 부름. 여기서는 콜백 없이 타이머와 연결만 정리
+        m_callbacks = {};
+        endAll();
+    }
+
+    std::shared_ptr<Session> SessionManager::startSession(const std::shared_ptr<Connection> &connection)
+    {
+        if (m_stopped || connection->isClosed())
+        {
+            return nullptr;
+        }
+
+        if (m_idsByConnection.contains(connection->getId()))
+        {
+            engineLogWarning("Connection ", connection->getAddress(), " already has a session");
+            return nullptr;
+        }
+
+        const Session::SessionId id = m_nextId++;
+        auto session = std::make_shared<ServerSession>(id, makeToken(), m_executor, *this);
+        m_sessions.emplace(id, session);
+        m_idsByToken.emplace(session->m_token, id);
+        attach(*session, connection);
+
+        connection->send(control::make(ControlType::SessionStarted, session->m_token));
+        engineLogInfo("Session ", id, " started for ", connection->getAddress());
+
+        if (m_callbacks.onStarted)
+        {
+            m_callbacks.onStarted(session);
+        }
+
+        return session;
+    }
+
+    std::shared_ptr<Session> SessionManager::find(const Connection &connection) const
+    {
+        const auto idIt = m_idsByConnection.find(connection.getId());
+
+        if (idIt == m_idsByConnection.end())
+        {
+            return nullptr;
+        }
+
+        return m_sessions.at(idIt->second);
+    }
+
+    void SessionManager::resume(const std::shared_ptr<Connection> &connection, const std::string &token)
+    {
+        const auto idIt = m_idsByToken.find(token);
+
+        if (m_stopped || idIt == m_idsByToken.end() || m_idsByConnection.contains(connection->getId()))
+        {
+            engineLogInfo("Resume failed from ", connection->getAddress());
+            connection->send(control::make(ControlType::ResumeFailed));
+            return;
+        }
+
+        const std::shared_ptr<ServerSession> session = m_sessions.at(idIt->second);
+
+        if (session->m_state == SessionState::Attached)
+        {
+            // 이전 연결이 끊긴 걸 아직 모르는 경우. 이전 연결을 버리고 새 연결로 넘김
+            const std::shared_ptr<Connection> previous = std::move(session->m_connection);
+            m_idsByConnection.erase(previous->getId());
+            previous->send(control::disconnect(DisconnectReason::Replaced));
+            previous->close();
         }
         else
         {
-            if (const std::optional<DisconnectReason> notice = noticeFor(reason))
-            {
-                connection->send(control::disconnect(*notice));
-            }
-            connection->close();
+            session->m_expiryTimer.cancel();
+            changeState(*session, SessionState::Attached);
+        }
+
+        attach(*session, connection);
+        connection->send(control::make(ControlType::SessionResumed));
+        engineLogInfo("Session ", session->m_id, " resumed from ", connection->getAddress());
+
+        if (m_callbacks.onResumed)
+        {
+            m_callbacks.onResumed(session);
         }
     }
 
-    engineLogInfo("Session ", session.m_id, " ended");
-    if (m_callbacks.onEnded)
+    void SessionManager::onConnectionClosed(const Connection &connection)
     {
-        m_callbacks.onEnded(keep, reason);
+        const auto idIt = m_idsByConnection.find(connection.getId());
+
+        if (idIt == m_idsByConnection.end())
+        {
+            return;
+        }
+
+        const std::shared_ptr<ServerSession> session = m_sessions.at(idIt->second);
+        m_idsByConnection.erase(idIt);
+        session->m_connection.reset();
+
+        if (m_resumeTimeout.count() == 0)
+        {
+            end(*session, SessionEndReason::Expired, ConnectionClose::Graceful);
+            return;
+        }
+
+        changeState(*session, SessionState::Detached);
+        engineLogInfo("Session ", session->m_id, " detached, waiting ", m_resumeTimeout.count(), "s for resume");
+        session->m_expiryTimer.expires_after(m_resumeTimeout);
+        session->m_expiryTimer.async_wait(
+            [this, weakSession = std::weak_ptr<ServerSession>(session)](const boost::system::error_code &ec) {
+                const std::shared_ptr<ServerSession> expired = weakSession.lock();
+
+                if (ec || !expired || expired->m_state != SessionState::Detached)
+                {
+                    return;
+                }
+
+                engineLogInfo("Session ", expired->m_id, " expired");
+                end(*expired, SessionEndReason::Expired, ConnectionClose::Graceful);
+            });
+
+        if (m_callbacks.onDetached)
+        {
+            m_callbacks.onDetached(session);
+        }
     }
-}
+
+    void SessionManager::stop()
+    {
+        m_stopped = true;
+        endAll();
+    }
+
+    void SessionManager::endAll()
+    {
+        std::vector<std::shared_ptr<ServerSession>> sessions;
+        sessions.reserve(m_sessions.size());
+
+        for (const auto &[id, session] : m_sessions)
+        {
+            sessions.push_back(session);
+        }
+
+        for (const std::shared_ptr<ServerSession> &session : sessions)
+        {
+            end(*session, SessionEndReason::ServerStopped, ConnectionClose::Graceful);
+        }
+    }
+
+    const char *SessionManager::toString(SessionState state)
+    {
+        switch (state)
+        {
+            case SessionState::Attached:
+                return "Attached";
+            case SessionState::Detached:
+                return "Detached";
+            case SessionState::Ended:
+                return "Ended";
+        }
+
+        return "Unknown";
+    }
+
+    bool SessionManager::canChange(SessionState from, SessionState to)
+    {
+        switch (to)
+        {
+            case SessionState::Attached:
+                return from == SessionState::Detached;
+            case SessionState::Detached:
+                return from == SessionState::Attached;
+            case SessionState::Ended:
+                return from != SessionState::Ended;
+        }
+
+        return false;
+    }
+
+    void SessionManager::changeState(ServerSession &session, SessionState next)
+    {
+        if (!canChange(session.m_state, next))
+        {
+            engineLogError("Unexpected session ", session.m_id, " state change: ", toString(session.m_state), " -> ",
+                           toString(next));
+        }
+
+        engineLogDebug("Session ", session.m_id, " state: ", toString(session.m_state), " -> ", toString(next));
+        session.m_state = next;
+    }
+
+    void SessionManager::attach(ServerSession &session, const std::shared_ptr<Connection> &connection)
+    {
+        session.m_connection = connection;
+        m_idsByConnection[connection->getId()] = session.m_id;
+    }
+
+    void SessionManager::logout(const Connection &connection)
+    {
+        const auto idIt = m_idsByConnection.find(connection.getId());
+
+        if (idIt != m_idsByConnection.end())
+        {
+            end(*m_sessions.at(idIt->second), SessionEndReason::LoggedOut, ConnectionClose::Graceful);
+        }
+    }
+
+    void SessionManager::end(ServerSession &session, SessionEndReason reason, ConnectionClose connectionClose)
+    {
+        if (session.isEnded())
+        {
+            return;
+        }
+
+        changeState(session, SessionState::Ended);
+        session.m_expiryTimer.cancel();
+
+        // 콜백이 끝날 때까지 세션이 살아 있도록 잡아 둠
+        const std::shared_ptr<ServerSession> keep = m_sessions.at(session.m_id);
+        m_sessions.erase(session.m_id);
+        m_idsByToken.erase(session.m_token);
+
+        if (std::shared_ptr<Connection> connection = std::move(session.m_connection))
+        {
+            m_idsByConnection.erase(connection->getId());
+
+            if (connectionClose == ConnectionClose::Reset)
+            {
+                connection->reset();
+            }
+            else
+            {
+                if (const std::optional<DisconnectReason> notice = noticeFor(reason))
+                {
+                    connection->send(control::disconnect(*notice));
+                }
+
+                connection->close();
+            }
+        }
+
+        engineLogInfo("Session ", session.m_id, " ended");
+
+        if (m_callbacks.onEnded)
+        {
+            m_callbacks.onEnded(keep, reason);
+        }
+    }
 } // namespace tcpengine

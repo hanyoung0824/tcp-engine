@@ -10,33 +10,36 @@
 
 namespace tcpengine::detail
 {
-// 본문을 읽고 검사를 통과하면 핸들러를 호출. 형식이나 값이 잘못되면 false
-// Target은 핸들러가 받는 대상 (Connection 또는 서버의 Session)
-template <typename Target>
-using TargetDispatcher = std::function<bool(const std::shared_ptr<Target> &target, PacketReader &body)>;
+    // 본문을 읽고 검사를 통과하면 핸들러를 호출. 형식이나 값이 잘못되면 false
+    // Target은 핸들러가 받는 대상 (Connection 또는 서버의 Session)
+    template <typename Target>
+    using TargetDispatcher = std::function<bool(const std::shared_ptr<Target> &target, PacketReader &body)>;
 
-using PacketDispatcher = TargetDispatcher<Connection>;
+    using PacketDispatcher = TargetDispatcher<Connection>;
 
-// 본문을 끝까지 읽고 값 규칙까지 통과했는지
-template <typename T> bool readPacket(PacketReader &body, T &packet)
-{
-    static_assert(std::is_base_of_v<PacketBase, T>, "T must derive from PacketBase");
-    return packet.read(body) && body.isEnd() && packet.validate();
-}
+    // 본문을 끝까지 읽고 값 규칙까지 통과했는지
+    template <typename T> bool readPacket(PacketReader &body, T &packet)
+    {
+        static_assert(std::is_base_of_v<PacketBase, T>, "T must derive from PacketBase");
+        return packet.read(body) && body.isEnd() && packet.validate();
+    }
 
-template <typename T, typename Target, typename Handler> TargetDispatcher<Target> makePacketDispatcher(Handler handler)
-{
-    static_assert(std::is_invocable_v<Handler &, const std::shared_ptr<Target> &, const T &>,
-                  "Handler must be callable as handler(const std::shared_ptr<Target>&, const T&)");
+    template <typename T, typename Target, typename Handler>
+    TargetDispatcher<Target> makePacketDispatcher(Handler handler)
+    {
+        static_assert(std::is_invocable_v<Handler &, const std::shared_ptr<Target> &, const T &>,
+                      "Handler must be callable as handler(const std::shared_ptr<Target>&, const T&)");
 
-    return [handler = std::move(handler)](const std::shared_ptr<Target> &target, PacketReader &body) mutable {
-        T packet;
-        if (!readPacket(body, packet))
-        {
-            return false;
-        }
-        handler(target, packet);
-        return true;
-    };
-}
+        return [handler = std::move(handler)](const std::shared_ptr<Target> &target, PacketReader &body) mutable {
+            T packet;
+
+            if (!readPacket(body, packet))
+            {
+                return false;
+            }
+
+            handler(target, packet);
+            return true;
+        };
+    }
 } // namespace tcpengine::detail

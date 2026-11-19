@@ -5,28 +5,31 @@
 
 namespace tcpengine
 {
-nlohmann::json loadJsonFile(const std::filesystem::path &path)
-{
-    std::ifstream file(path);
-    if (!file)
+    nlohmann::json loadJsonFile(const std::filesystem::path &path)
     {
-        throw std::runtime_error("cannot open file");
-    }
+        std::ifstream file(path);
 
-    nlohmann::json json;
-    try
-    {
-        json = nlohmann::json::parse(file);
-    }
-    catch (const nlohmann::json::exception &e)
-    {
-        throw std::runtime_error(e.what());
-    }
+        if (!file)
+        {
+            throw std::runtime_error("cannot open file");
+        }
 
-    if (!json.is_object())
-    {
-        throw std::runtime_error("top level must be an object");
+        nlohmann::json json;
+
+        try
+        {
+            json = nlohmann::json::parse(file);
+        }
+        catch (const nlohmann::json::exception &e)
+        {
+            throw std::runtime_error(e.what());
+        }
+
+        if (!json.is_object())
+        {
+            throw std::runtime_error("top level must be an object");
+        }
+
+        return json;
     }
-    return json;
-}
 } // namespace tcpengine

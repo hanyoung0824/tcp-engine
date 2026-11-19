@@ -12,21 +12,21 @@ namespace tcpengine
 // 네트워크 스레드에서만 사용
 class ReceiveRateLimiter
 {
-public:
-	explicit ReceiveRateLimiter(double packetsPerSecond);
+  public:
+    explicit ReceiveRateLimiter(double packetsPerSecond);
 
-	ReceiveRateLimiter(const ReceiveRateLimiter&) = delete;
-	ReceiveRateLimiter& operator=(const ReceiveRateLimiter&) = delete;
+    ReceiveRateLimiter(const ReceiveRateLimiter &) = delete;
+    ReceiveRateLimiter &operator=(const ReceiveRateLimiter &) = delete;
 
-	void start(const Connection& connection);
+    void start(const Connection &connection);
 
-	// 패킷 하나를 받아도 되는지. 넘으면 false
-	bool tryReceive(const Connection& connection);
+    // 패킷 하나를 받아도 되는지. 넘으면 false
+    bool tryReceive(const Connection &connection);
 
-	void stop(const Connection& connection);
+    void stop(const Connection &connection);
 
-private:
-	const double m_packetsPerSecond;
-	std::unordered_map<Connection::ConnectionId, TokenBucket> m_buckets;
+  private:
+    const double m_packetsPerSecond;
+    std::unordered_map<Connection::ConnectionId, TokenBucket> m_buckets;
 };
-}
+} // namespace tcpengine

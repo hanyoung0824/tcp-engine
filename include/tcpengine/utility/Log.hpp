@@ -8,19 +8,18 @@ namespace tcpengine
 {
 enum class LogLevel
 {
-	Debug,
-	Info,
-	Warning,
-	Error,
+    Debug,
+    Info,
+    Warning,
+    Error,
 };
 
 // 인자를 차례로 << 하여 한 문자열로 만듦
-template <typename... Args>
-std::string formatLog(const Args&... args)
+template <typename... Args> std::string formatLog(const Args &...args)
 {
-	std::ostringstream message;
-	(message << ... << args);
-	return message.str();
+    std::ostringstream message;
+    (message << ... << args);
+    return message.str();
 }
 
 // 설정한 출력 레벨로 보아 이 레벨의 로그가 출력되는지
@@ -30,35 +29,31 @@ bool isLogEnabled(LogLevel level);
 void writeLog(LogLevel level, std::string message);
 
 // 걸러질 로그는 문자열을 만들기 전에 버림
-template <typename... Args>
-void log(LogLevel level, const Args&... args)
+template <typename... Args> void log(LogLevel level, const Args &...args)
 {
-	if (isLogEnabled(level)) {
-		writeLog(level, formatLog(args...));
-	}
+    if (isLogEnabled(level))
+    {
+        writeLog(level, formatLog(args...));
+    }
 }
 
-template <typename... Args>
-void logDebug(const Args&... args)
+template <typename... Args> void logDebug(const Args &...args)
 {
-	log(LogLevel::Debug, args...);
+    log(LogLevel::Debug, args...);
 }
 
-template <typename... Args>
-void logInfo(const Args&... args)
+template <typename... Args> void logInfo(const Args &...args)
 {
-	log(LogLevel::Info, args...);
+    log(LogLevel::Info, args...);
 }
 
-template <typename... Args>
-void logWarning(const Args&... args)
+template <typename... Args> void logWarning(const Args &...args)
 {
-	log(LogLevel::Warning, args...);
+    log(LogLevel::Warning, args...);
 }
 
-template <typename... Args>
-void logError(const Args&... args)
+template <typename... Args> void logError(const Args &...args)
 {
-	log(LogLevel::Error, args...);
+    log(LogLevel::Error, args...);
 }
-}
+} // namespace tcpengine

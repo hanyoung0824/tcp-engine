@@ -1,10 +1,10 @@
 #pragma once
 
+#include "ConnectionEvents.hpp"
+#include "ConnectionOptions.hpp"
 #include "Listener.hpp"
 #include "ServerTransport.hpp"
-#include "ConnectionEvents.hpp"
 #include "TcpConnectionRegistry.hpp"
-#include "ConnectionOptions.hpp"
 
 #include <boost/asio.hpp>
 
@@ -15,21 +15,21 @@ namespace tcpengine
 {
 class TcpServerTransport final : public ServerTransport
 {
-public:
-	TcpServerTransport(boost::asio::any_io_executor executor, unsigned short port, ConnectionOptions connectionOptions, CanAccept canAccept,
-		std::shared_ptr<const ConnectionEvents> events);
+  public:
+    TcpServerTransport(boost::asio::any_io_executor executor, unsigned short port, ConnectionOptions connectionOptions,
+                       CanAccept canAccept, std::shared_ptr<const ConnectionEvents> events);
 
-	TcpServerTransport(const TcpServerTransport&) = delete;
-	TcpServerTransport& operator=(const TcpServerTransport&) = delete;
+    TcpServerTransport(const TcpServerTransport &) = delete;
+    TcpServerTransport &operator=(const TcpServerTransport &) = delete;
 
-	bool start() override;
+    bool start() override;
 
-	void stopAccepting() override;
+    void stopAccepting() override;
 
-	void closeAll(std::shared_ptr<const Connection::Buffer> farewell, std::function<void()> onAllClosed) override;
+    void closeAll(std::shared_ptr<const Connection::Buffer> farewell, std::function<void()> onAllClosed) override;
 
-private:
-	TcpConnectionRegistry m_connectionRegistry;
-	Listener m_listener;
+  private:
+    TcpConnectionRegistry m_connectionRegistry;
+    Listener m_listener;
 };
-}
+} // namespace tcpengine

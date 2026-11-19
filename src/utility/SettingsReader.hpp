@@ -10,10 +10,10 @@
 namespace tcpengine::config
 {
 // 1~65535. unsigned short로 바로 받으면 범위를 넘는 값이 에러 없이 바뀌므로 int로 받아 검사
-unsigned short readPort(const nlohmann::json& json, const char* key);
+unsigned short readPort(const nlohmann::json &json, const char *key);
 
 // 1 이상. size_t로 바로 받으면 음수가 에러 없이 큰 값으로 바뀌므로 int64로 받아 검사
-std::size_t readPositive(const nlohmann::json& json, const char* key);
+std::size_t readPositive(const nlohmann::json &json, const char *key);
 
-std::chrono::seconds readSeconds(const nlohmann::json& json, const char* key);
-}
+std::chrono::seconds readSeconds(const nlohmann::json &json, const char *key);
+} // namespace tcpengine::config

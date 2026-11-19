@@ -14,16 +14,16 @@ constexpr std::uint16_t controlPacketId = 0;
 
 enum class ControlType : std::uint16_t
 {
-	ServerHello = 1,     // 서버 → 클라. 접속 직후 한 번. 본문: 하트비트 interval(uint16 초), timeout(uint16 초)
-	Ping = 2,            // 클라 → 서버
-	Pong = 3,            // 서버 → 클라
-	SessionStarted = 4,  // 서버 → 클라. 본문: 재접속 토큰(string)
-	Resume = 5,          // 클라 → 서버. 본문: 재접속 토큰(string). 재접속 직후 보냄
-	SessionResumed = 6,  // 서버 → 클라
-	ResumeFailed = 7,    // 서버 → 클라. 클라이언트는 로그인부터 다시 함
-	ClientHello = 8,     // 클라 → 서버. 접속 직후 가장 먼저. 본문: 엔진 버전(uint16), 응용 버전(uint16)
-	Disconnect = 9,      // 서버 → 클라. 끊기 직전. 본문: DisconnectReason(uint16)
-	Logout = 10,         // 클라 → 서버. 스스로 나갈 때. 세션을 재접속 대기 없이 바로 끝냄
+    ServerHello = 1,    // 서버 → 클라. 접속 직후 한 번. 본문: 하트비트 interval(uint16 초), timeout(uint16 초)
+    Ping = 2,           // 클라 → 서버
+    Pong = 3,           // 서버 → 클라
+    SessionStarted = 4, // 서버 → 클라. 본문: 재접속 토큰(string)
+    Resume = 5,         // 클라 → 서버. 본문: 재접속 토큰(string). 재접속 직후 보냄
+    SessionResumed = 6, // 서버 → 클라
+    ResumeFailed = 7,   // 서버 → 클라. 클라이언트는 로그인부터 다시 함
+    ClientHello = 8,    // 클라 → 서버. 접속 직후 가장 먼저. 본문: 엔진 버전(uint16), 응용 버전(uint16)
+    Disconnect = 9,     // 서버 → 클라. 끊기 직전. 본문: DisconnectReason(uint16)
+    Logout = 10,        // 클라 → 서버. 스스로 나갈 때. 세션을 재접속 대기 없이 바로 끝냄
 };
 
 // 엔진 제어 패킷 형식의 버전. 바꾸면 올림. 다르면 서버가 VersionMismatch로 끊음
@@ -31,4 +31,4 @@ constexpr std::uint16_t engineProtocolVersion = 1;
 
 // 재접속 토큰 길이 (16바이트를 16진수 문자열로)
 constexpr std::size_t sessionTokenLength = 32;
-}
+} // namespace tcpengine

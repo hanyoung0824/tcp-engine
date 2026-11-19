@@ -18,14 +18,14 @@ namespace tcpengine::control
 // 서버가 접속 직후 클라이언트에 한 번 보내는 정보
 struct ServerHello
 {
-	HeartbeatSettings heartbeat;
+    HeartbeatSettings heartbeat;
 };
 
 // 클라이언트가 접속 직후 가장 먼저 보내는 정보. 서버는 버전이 다르면 VersionMismatch로 끊음
 struct ClientHello
 {
-	std::uint16_t engineVersion = 0;
-	std::uint16_t appVersion = 0;
+    std::uint16_t engineVersion = 0;
+    std::uint16_t appVersion = 0;
 };
 
 std::shared_ptr<const Connection::Buffer> make(ControlType type);
@@ -37,15 +37,15 @@ std::shared_ptr<const Connection::Buffer> ping();
 std::shared_ptr<const Connection::Buffer> pong();
 
 // 하트비트 interval과 timeout을 uint16 초로 보내므로 65535초를 넘으면 nullptr
-std::shared_ptr<const Connection::Buffer> serverHello(const ServerHello& hello);
+std::shared_ptr<const Connection::Buffer> serverHello(const ServerHello &hello);
 
-std::optional<ServerHello> readServerHello(PacketReader& body);
+std::optional<ServerHello> readServerHello(PacketReader &body);
 
-std::shared_ptr<const Connection::Buffer> clientHello(const ClientHello& hello);
+std::shared_ptr<const Connection::Buffer> clientHello(const ClientHello &hello);
 
-std::optional<ClientHello> readClientHello(PacketReader& body);
+std::optional<ClientHello> readClientHello(PacketReader &body);
 
 std::shared_ptr<const Connection::Buffer> disconnect(DisconnectReason reason);
 
-std::optional<DisconnectReason> readDisconnect(PacketReader& body);
-}
+std::optional<DisconnectReason> readDisconnect(PacketReader &body);
+} // namespace tcpengine::control

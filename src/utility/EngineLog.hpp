@@ -13,35 +13,31 @@ bool isEngineLogEnabled(LogLevel level);
 void writeEngineLog(LogLevel level, std::string message);
 
 // 걸러질 로그는 문자열을 만들기 전에 버림
-template <typename... Args>
-void engineLog(LogLevel level, const Args&... args)
+template <typename... Args> void engineLog(LogLevel level, const Args &...args)
 {
-	if (isEngineLogEnabled(level)) {
-		writeEngineLog(level, formatLog(args...));
-	}
+    if (isEngineLogEnabled(level))
+    {
+        writeEngineLog(level, formatLog(args...));
+    }
 }
 
-template <typename... Args>
-void engineLogDebug(const Args&... args)
+template <typename... Args> void engineLogDebug(const Args &...args)
 {
-	engineLog(LogLevel::Debug, args...);
+    engineLog(LogLevel::Debug, args...);
 }
 
-template <typename... Args>
-void engineLogInfo(const Args&... args)
+template <typename... Args> void engineLogInfo(const Args &...args)
 {
-	engineLog(LogLevel::Info, args...);
+    engineLog(LogLevel::Info, args...);
 }
 
-template <typename... Args>
-void engineLogWarning(const Args&... args)
+template <typename... Args> void engineLogWarning(const Args &...args)
 {
-	engineLog(LogLevel::Warning, args...);
+    engineLog(LogLevel::Warning, args...);
 }
 
-template <typename... Args>
-void engineLogError(const Args&... args)
+template <typename... Args> void engineLogError(const Args &...args)
 {
-	engineLog(LogLevel::Error, args...);
+    engineLog(LogLevel::Error, args...);
 }
-}
+} // namespace tcpengine

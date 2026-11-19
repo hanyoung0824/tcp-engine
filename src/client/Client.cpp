@@ -101,7 +101,7 @@ namespace tcpengine
         }
 
         changeState(makePassiveState(*m_context, ClientStateId::Starting));
-        finishStateChange();
+        applyNextState();
 
         if (!callOnStart() || !createComponents())
         {
@@ -123,7 +123,7 @@ namespace tcpengine
         // 연결이 닫힌 일까지 응용에 알림
         processMainEvents();
         changeState(makePassiveState(*m_context, ClientStateId::Stopped));
-        finishStateChange();
+        applyNextState();
         return 0;
     }
 
@@ -131,46 +131,35 @@ namespace tcpengine
     {
         stopNetworkThread();
         changeState(makePassiveState(*m_context, ClientStateId::Stopped));
-        finishStateChange();
+        applyNextState();
         return 1;
     }
 
     void Client::changeState(std::unique_ptr<ClientState> next)
     {
-        if (!m_state->canChange(next->getId()))
-        {
-            engineLogError("Unexpected client state change: ", m_state->toString(), " -> ", next->toString());
-        }
-
-        engineLogDebug("Client state: ", m_state->toString(), " -> ", next->toString());
-        m_retiredStates.push_back(std::move(m_state));
-        m_state = std::move(next);
-        m_enterPending = true;
+        m_nextState = std::move(next);
     }
 
     void Client::dispatch(const std::function<void(ClientState &)> &event)
     {
-        ++m_dispatchDepth;
         event(*m_state);
-        --m_dispatchDepth;
-
-        if (m_dispatchDepth == 0)
-        {
-            finishStateChange();
-        }
+        applyNextState();
     }
 
-    void Client::finishStateChange()
+    void Client::applyNextState()
     {
-        // onEnter()에서 상태가 다시 바뀌면 이어서 처리
-        while (m_enterPending)
+        while (m_nextState)
         {
-            m_enterPending = false;
-            m_retiredStates.clear();
+            if (!m_state->canChange(m_nextState->getId()))
+            {
+                engineLogError("Unexpected client state change: ", m_state->toString(), " -> ",
+                               m_nextState->toString());
+            }
+
+            engineLogDebug("Client state: ", m_state->toString(), " -> ", m_nextState->toString());
+            m_state = std::move(m_nextState);
             m_state->onEnter();
         }
-
-        m_retiredStates.clear();
     }
 
     bool Client::validateSettings() const
@@ -245,7 +234,7 @@ namespace tcpengine
     std::future<bool> Client::postFirstConnect()
     {
         changeState(makeFirstConnectingState(*m_context));
-        finishStateChange();
+        applyNextState();
         auto result = std::make_shared<std::promise<bool>>();
         std::future<bool> connected = result->get_future();
         connect([result](bool success) { result->set_value(success); });

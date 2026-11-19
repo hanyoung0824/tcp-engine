@@ -5,6 +5,8 @@
 
 #include <algorithm>
 #include <chrono>
+#include <optional>
+#include <utility>
 
 namespace tcpengine
 {
@@ -104,7 +106,10 @@ namespace tcpengine
         class DisconnectedState final : public ClientState
         {
             public:
-                using ClientState::ClientState;
+                DisconnectedState(ClientContext &context, const DisconnectInfo &info)
+                    : ClientState(context), m_info(info)
+                {
+                }
 
                 ClientStateId getId() const override
                 {
@@ -120,6 +125,14 @@ namespace tcpengine
                 {
                     return next == ClientStateId::Quitting;
                 }
+
+                void onEnter() override
+                {
+                    m_context.notifyDisconnected(m_info);
+                }
+
+            private:
+                const DisconnectInfo m_info;
         };
 
         class ConnectedState final : public ClientState
@@ -143,15 +156,23 @@ namespace tcpengine
                            next == ClientStateId::Quitting;
                 }
 
+                void onEnter() override
+                {
+                    m_context.greet();
+                }
+
                 void onDisconnected() override;
         };
 
         // attempt번째 재접속을 1, 2, 4초…로 늘려 가며 maxDelay까지 기다렸다가 시도함
         // 시각이 됐는지는 메인 루프의 틱마다 확인
+        // 연결이 끊겨 들어왔으면 disconnectInfo로 응용에 먼저 알림. 재접속 실패로 들어오면 없음
         class WaitingReconnectState final : public ClientState
         {
             public:
-                WaitingReconnectState(ClientContext &context, int attempt) : ClientState(context), m_attempt(attempt)
+                WaitingReconnectState(ClientContext &context, int attempt,
+                                      std::optional<DisconnectInfo> disconnectInfo = std::nullopt)
+                    : ClientState(context), m_attempt(attempt), m_disconnectInfo(std::move(disconnectInfo))
                 {
                 }
 
@@ -172,6 +193,11 @@ namespace tcpengine
 
                 void onEnter() override
                 {
+                    if (m_disconnectInfo)
+                    {
+                        m_context.notifyDisconnected(*m_disconnectInfo);
+                    }
+
                     const std::chrono::seconds delay = delayFor(m_attempt, m_context.getReconnectMaxDelay());
                     engineLogInfo("Reconnecting in ", delay.count(), "s (attempt ", m_attempt, ")");
                     m_reconnectAt = std::chrono::steady_clock::now() + delay;
@@ -194,6 +220,7 @@ namespace tcpengine
 
             private:
                 const int m_attempt;
+                const std::optional<DisconnectInfo> m_disconnectInfo;
                 std::chrono::steady_clock::time_point m_reconnectAt;
         };
 
@@ -233,7 +260,6 @@ namespace tcpengine
                 void onConnected() override
                 {
                     m_context.changeState(std::make_unique<ConnectedState>(m_context));
-                    m_context.greet();
                 }
 
                 void onConnectFailed() override
@@ -251,14 +277,12 @@ namespace tcpengine
 
             if (info.willReconnect)
             {
-                m_context.changeState(std::make_unique<WaitingReconnectState>(m_context, 1));
+                m_context.changeState(std::make_unique<WaitingReconnectState>(m_context, 1, info));
             }
             else
             {
-                m_context.changeState(std::make_unique<DisconnectedState>(m_context));
+                m_context.changeState(std::make_unique<DisconnectedState>(m_context, info));
             }
-
-            m_context.notifyDisconnected(info);
         }
 
         void WaitingReconnectState::onTick(std::chrono::steady_clock::time_point now)

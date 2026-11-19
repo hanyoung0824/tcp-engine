@@ -16,7 +16,7 @@ namespace tcpengine
             {
             }
 
-            // 바로 바뀌며 이전 상태 객체는 지금 이벤트 처리가 끝난 뒤에 사라짐. 새 상태의 onEnter()도 그때 불림
+            // 지금 이벤트 처리가 끝난 뒤, 다음 이벤트보다 먼저 바뀌고 새 상태의 onEnter()가 불림
             void changeState(std::unique_ptr<ClientState> next);
 
             std::chrono::seconds getReconnectMaxDelay() const;

@@ -19,7 +19,6 @@
 #include <string>
 #include <thread>
 #include <type_traits>
-#include <vector>
 
 namespace boost::asio
 {
@@ -138,14 +137,14 @@ namespace tcpengine
             friend class ClientContext;
 
             // 아래 셋은 메인 스레드에서만 호출
-            // 상태 객체의 함수 안에서도 부를 수 있도록 이전 상태 객체는 finishStateChange()까지 살려 둠
+            // 다음 상태를 기록만 함. 상태 객체의 함수가 끝난 뒤 applyNextState()가 바꿈
             void changeState(std::unique_ptr<ClientState> next);
 
-            // 지금 상태에 이벤트를 넘기고 그 사이 바뀐 상태를 마무리함
+            // 지금 상태에 이벤트를 넘기고, 다음 이벤트를 받기 전에 바뀐 상태를 적용함
             void dispatch(const std::function<void(ClientState &)> &event);
 
-            // 이전 상태 객체를 없애고 새 상태의 onEnter()를 부름
-            void finishStateChange();
+            // 기록된 다음 상태로 바꾸고 onEnter()를 부름. onEnter()에서 또 바뀌면 이어서 처리
+            void applyNextState();
 
             // 첫 접속 실패나 시작 실패 뒤 정리
             int stopWithError();
@@ -226,10 +225,7 @@ namespace tcpengine
             // 상태 객체들이 참조하므로 상태보다 먼저 만들고 나중에 없앰
             std::unique_ptr<ClientContext> m_context;
             std::unique_ptr<ClientState> m_state;
-            std::vector<std::unique_ptr<ClientState>> m_retiredStates;
-            bool m_enterPending = false;
-            // 응용 훅 안에서 이벤트가 다시 올 수 있음. 가장 바깥 이벤트가 끝날 때만 마무리
-            int m_dispatchDepth = 0;
+            std::unique_ptr<ClientState> m_nextState;
             // onConnected()를 부른 연결이 아직 있음. onDisconnected()와 짝을 맞춤
             bool m_connectionAnnounced = false;
             // 비어 있으면 세션 없음

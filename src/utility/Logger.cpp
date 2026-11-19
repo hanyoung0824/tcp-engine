@@ -61,116 +61,116 @@ namespace tcpengine
     // 출력할 곳은 출처마다 따로 둠. 소멸할 때 thread_pool이 큐에 남은 로그를 모두 출력하고 로그 스레드를 끝냄
     class LogSystem
     {
-        public:
-            explicit LogSystem(const LogSettings &settings)
-                : m_threadPool(std::make_shared<spdlog::details::thread_pool>(queueSize, 1))
+    public:
+        explicit LogSystem(const LogSettings &settings)
+            : m_threadPool(std::make_shared<spdlog::details::thread_pool>(queueSize, 1))
+        {
+            const std::array<const LogOutputSettings *, sourceCount> outputs{&settings.engine, &settings.app};
+
+            for (std::size_t i = 0; i < sourceCount; ++i)
             {
-                const std::array<const LogOutputSettings *, sourceCount> outputs{&settings.engine, &settings.app};
-
-                for (std::size_t i = 0; i < sourceCount; ++i)
-                {
-                    m_loggers[i] = makeLogger(sourceNames[i], *outputs[i]);
-                }
-
-                m_periodicFlush = std::jthread([this](std::stop_token stopToken) { flushPeriodically(stopToken); });
+                m_loggers[i] = makeLogger(sourceNames[i], *outputs[i]);
             }
 
-            ~LogSystem()
+            m_periodicFlush = std::jthread([this](std::stop_token stopToken) { flushPeriodically(stopToken); });
+        }
+
+        ~LogSystem()
+        {
+            m_periodicFlush.request_stop();
+            m_periodicFlush.join();
+            // 큐에 남은 로그 뒤에 flush 요청을 넣음. thread_pool이 소멸하며 여기까지 처리함
+            flushAll();
+        }
+
+        LogSystem(const LogSystem &) = delete;
+        LogSystem &operator=(const LogSystem &) = delete;
+
+        spdlog::async_logger &logger(LogSource source) const
+        {
+            return *m_loggers[static_cast<std::size_t>(source)];
+        }
+
+    private:
+        // 큐가 차면 버리지 않고 기다림
+        std::shared_ptr<spdlog::async_logger> makeLogger(const char *name, const LogOutputSettings &output)
+        {
+            const std::vector<spdlog::sink_ptr> sinks = makeSinks(output);
+            auto logger = std::make_shared<spdlog::async_logger>(name, sinks.begin(), sinks.end(), m_threadPool,
+                                                                 spdlog::async_overflow_policy::block);
+            // 어느 싱크도 받지 않을 로그는 로거에서 미리 거름
+            logger->set_level(lowestLevel(output));
+            logger->flush_on(spdlog::level::warn);
+            return logger;
+        }
+
+        static std::vector<spdlog::sink_ptr> makeSinks(const LogOutputSettings &output)
+        {
+            std::vector<spdlog::sink_ptr> sinks;
+
+            if (output.console)
             {
-                m_periodicFlush.request_stop();
-                m_periodicFlush.join();
-                // 큐에 남은 로그 뒤에 flush 요청을 넣음. thread_pool이 소멸하며 여기까지 처리함
+                auto console = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+                console->set_level(toSpdlogLevel(output.console->level));
+                console->set_pattern(consolePattern);
+                sinks.push_back(std::move(console));
+            }
+
+            if (output.file)
+            {
+                auto file = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
+                    output.file->path.string(), output.file->maxSize, output.file->maxFiles);
+                file->set_level(toSpdlogLevel(output.file->level));
+                file->set_pattern(filePattern);
+                sinks.push_back(std::move(file));
+            }
+
+            return sinks;
+        }
+
+        static spdlog::level::level_enum lowestLevel(const LogOutputSettings &output)
+        {
+            spdlog::level::level_enum lowest = spdlog::level::off;
+
+            if (output.console)
+            {
+                lowest = std::min(lowest, toSpdlogLevel(output.console->level));
+            }
+
+            if (output.file)
+            {
+                lowest = std::min(lowest, toSpdlogLevel(output.file->level));
+            }
+
+            return lowest;
+        }
+
+        // 비동기 flush는 큐에 요청만 넣고 바로 돌아옴
+        void flushAll()
+        {
+            for (const std::shared_ptr<spdlog::async_logger> &logger : m_loggers)
+            {
+                logger->flush();
+            }
+        }
+
+        void flushPeriodically(std::stop_token stopToken)
+        {
+            std::mutex mutex;
+            std::condition_variable_any stopRequested;
+            std::unique_lock lock(mutex);
+
+            while (!stopRequested.wait_for(lock, stopToken, periodicFlushInterval,
+                                           [&stopToken] { return stopToken.stop_requested(); }))
+            {
                 flushAll();
             }
+        }
 
-            LogSystem(const LogSystem &) = delete;
-            LogSystem &operator=(const LogSystem &) = delete;
-
-            spdlog::async_logger &logger(LogSource source) const
-            {
-                return *m_loggers[static_cast<std::size_t>(source)];
-            }
-
-        private:
-            // 큐가 차면 버리지 않고 기다림
-            std::shared_ptr<spdlog::async_logger> makeLogger(const char *name, const LogOutputSettings &output)
-            {
-                const std::vector<spdlog::sink_ptr> sinks = makeSinks(output);
-                auto logger = std::make_shared<spdlog::async_logger>(name, sinks.begin(), sinks.end(), m_threadPool,
-                                                                     spdlog::async_overflow_policy::block);
-                // 어느 싱크도 받지 않을 로그는 로거에서 미리 거름
-                logger->set_level(lowestLevel(output));
-                logger->flush_on(spdlog::level::warn);
-                return logger;
-            }
-
-            static std::vector<spdlog::sink_ptr> makeSinks(const LogOutputSettings &output)
-            {
-                std::vector<spdlog::sink_ptr> sinks;
-
-                if (output.console)
-                {
-                    auto console = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
-                    console->set_level(toSpdlogLevel(output.console->level));
-                    console->set_pattern(consolePattern);
-                    sinks.push_back(std::move(console));
-                }
-
-                if (output.file)
-                {
-                    auto file = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
-                        output.file->path.string(), output.file->maxSize, output.file->maxFiles);
-                    file->set_level(toSpdlogLevel(output.file->level));
-                    file->set_pattern(filePattern);
-                    sinks.push_back(std::move(file));
-                }
-
-                return sinks;
-            }
-
-            static spdlog::level::level_enum lowestLevel(const LogOutputSettings &output)
-            {
-                spdlog::level::level_enum lowest = spdlog::level::off;
-
-                if (output.console)
-                {
-                    lowest = std::min(lowest, toSpdlogLevel(output.console->level));
-                }
-
-                if (output.file)
-                {
-                    lowest = std::min(lowest, toSpdlogLevel(output.file->level));
-                }
-
-                return lowest;
-            }
-
-            // 비동기 flush는 큐에 요청만 넣고 바로 돌아옴
-            void flushAll()
-            {
-                for (const std::shared_ptr<spdlog::async_logger> &logger : m_loggers)
-                {
-                    logger->flush();
-                }
-            }
-
-            void flushPeriodically(std::stop_token stopToken)
-            {
-                std::mutex mutex;
-                std::condition_variable_any stopRequested;
-                std::unique_lock lock(mutex);
-
-                while (!stopRequested.wait_for(lock, stopToken, periodicFlushInterval,
-                                               [&stopToken] { return stopToken.stop_requested(); }))
-                {
-                    flushAll();
-                }
-            }
-
-        private:
-            std::shared_ptr<spdlog::details::thread_pool> m_threadPool;
-            std::array<std::shared_ptr<spdlog::async_logger>, sourceCount> m_loggers;
-            std::jthread m_periodicFlush;
+    private:
+        std::shared_ptr<spdlog::details::thread_pool> m_threadPool;
+        std::array<std::shared_ptr<spdlog::async_logger>, sourceCount> m_loggers;
+        std::jthread m_periodicFlush;
     };
 
     Logger &Logger::instance()
@@ -256,9 +256,7 @@ namespace tcpengine
         });
     }
 
-    ScopedLogging::ScopedLogging(const LogSettings &settings) : m_started(Logger::instance().start(settings))
-    {
-    }
+    ScopedLogging::ScopedLogging(const LogSettings &settings) : m_started(Logger::instance().start(settings)) {}
 
     ScopedLogging::~ScopedLogging()
     {

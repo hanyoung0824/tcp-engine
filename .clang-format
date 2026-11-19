@@ -1,5 +1,7 @@
 BasedOnStyle: Microsoft
-# 중괄호 안은 모두 한 단계 들여씀
+# 중괄호 안은 한 단계 들여씀. public:/private:은 class와 같은 위치
 NamespaceIndentation: All
 IndentCaseLabels: true
-IndentAccessModifiers: true
+AccessModifierOffset: -4
+# 빈 함수는 한 줄로: void f() {}
+AllowShortFunctionsOnASingleLine: Empty

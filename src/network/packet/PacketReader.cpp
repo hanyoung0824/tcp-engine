@@ -2,9 +2,7 @@
 
 namespace tcpengine
 {
-    PacketReader::PacketReader(std::span<const std::uint8_t> data) : m_data(data)
-    {
-    }
+    PacketReader::PacketReader(std::span<const std::uint8_t> data) : m_data(data) {}
 
     bool PacketReader::readUInt16(std::uint16_t &out)
     {

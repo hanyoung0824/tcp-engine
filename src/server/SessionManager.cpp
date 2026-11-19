@@ -49,52 +49,52 @@ namespace tcpengine
 
     class SessionManager::ServerSession final : public Session
     {
-        public:
-            ServerSession(SessionId id, std::string token, boost::asio::any_io_executor executor, SessionManager &owner)
-                : m_id(id), m_token(std::move(token)), m_expiryTimer(std::move(executor)), m_owner(&owner)
+    public:
+        ServerSession(SessionId id, std::string token, boost::asio::any_io_executor executor, SessionManager &owner)
+            : m_id(id), m_token(std::move(token)), m_expiryTimer(std::move(executor)), m_owner(&owner)
+        {
+        }
+
+        SessionId getId() const override
+        {
+            return m_id;
+        }
+
+        std::shared_ptr<Connection> getConnection() const override
+        {
+            return m_connection;
+        }
+
+        bool isEnded() const
+        {
+            return m_state == SessionState::Ended;
+        }
+
+        void close() override
+        {
+            if (!isEnded())
             {
+                m_owner->end(*this, SessionEndReason::Closed, ConnectionClose::Graceful);
             }
+        }
 
-            SessionId getId() const override
+        void reset() override
+        {
+            if (!isEnded())
             {
-                return m_id;
+                m_owner->end(*this, SessionEndReason::Closed, ConnectionClose::Reset);
             }
+        }
 
-            std::shared_ptr<Connection> getConnection() const override
-            {
-                return m_connection;
-            }
+    private:
+        friend class SessionManager;
 
-            bool isEnded() const
-            {
-                return m_state == SessionState::Ended;
-            }
-
-            void close() override
-            {
-                if (!isEnded())
-                {
-                    m_owner->end(*this, SessionEndReason::Closed, ConnectionClose::Graceful);
-                }
-            }
-
-            void reset() override
-            {
-                if (!isEnded())
-                {
-                    m_owner->end(*this, SessionEndReason::Closed, ConnectionClose::Reset);
-                }
-            }
-
-        private:
-            friend class SessionManager;
-
-            const SessionId m_id;
-            const std::string m_token;
-            SessionState m_state = SessionState::Attached;
-            std::shared_ptr<Connection> m_connection;
-            boost::asio::steady_timer m_expiryTimer;
-            SessionManager *const m_owner;
+        const SessionId m_id;
+        const std::string m_token;
+        SessionState m_state = SessionState::Attached;
+        std::shared_ptr<Connection> m_connection;
+        boost::asio::steady_timer m_expiryTimer;
+        SessionManager *const m_owner;
     };
 
     SessionManager::SessionManager(boost::asio::any_io_executor executor, std::chrono::seconds resumeTimeout,

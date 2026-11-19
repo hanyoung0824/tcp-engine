@@ -10,20 +10,20 @@ namespace tcpengine
     // 네트워크 스레드에서 사용
     class ShutdownSignalHandler
     {
-        public:
-            ShutdownSignalHandler(boost::asio::any_io_executor executor, std::function<void()> onShutdown,
-                                  std::function<void()> onForce);
+    public:
+        ShutdownSignalHandler(boost::asio::any_io_executor executor, std::function<void()> onShutdown,
+                              std::function<void()> onForce);
 
-            ShutdownSignalHandler(const ShutdownSignalHandler &) = delete;
-            ShutdownSignalHandler &operator=(const ShutdownSignalHandler &) = delete;
+        ShutdownSignalHandler(const ShutdownSignalHandler &) = delete;
+        ShutdownSignalHandler &operator=(const ShutdownSignalHandler &) = delete;
 
-        private:
-            void wait();
+    private:
+        void wait();
 
-        private:
-            boost::asio::signal_set m_signals;
-            const std::function<void()> m_onShutdown;
-            const std::function<void()> m_onForce;
-            bool m_received = false;
+    private:
+        boost::asio::signal_set m_signals;
+        const std::function<void()> m_onShutdown;
+        const std::function<void()> m_onForce;
+        bool m_received = false;
     };
 } // namespace tcpengine

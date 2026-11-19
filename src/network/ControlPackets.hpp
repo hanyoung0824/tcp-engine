@@ -18,14 +18,14 @@ namespace tcpengine::control
     // 서버가 접속 직후 클라이언트에 한 번 보내는 정보
     struct ServerHello
     {
-            HeartbeatSettings heartbeat;
+        HeartbeatSettings heartbeat;
     };
 
     // 클라이언트가 접속 직후 가장 먼저 보내는 정보. 서버는 버전이 다르면 VersionMismatch로 끊음
     struct ClientHello
     {
-            std::uint16_t engineVersion = 0;
-            std::uint16_t appVersion = 0;
+        std::uint16_t engineVersion = 0;
+        std::uint16_t appVersion = 0;
     };
 
     std::shared_ptr<const Connection::Buffer> make(ControlType type);

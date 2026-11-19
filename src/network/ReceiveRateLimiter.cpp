@@ -2,9 +2,7 @@
 
 namespace tcpengine
 {
-    ReceiveRateLimiter::ReceiveRateLimiter(double packetsPerSecond) : m_packetsPerSecond(packetsPerSecond)
-    {
-    }
+    ReceiveRateLimiter::ReceiveRateLimiter(double packetsPerSecond) : m_packetsPerSecond(packetsPerSecond) {}
 
     void ReceiveRateLimiter::start(const Connection &connection)
     {

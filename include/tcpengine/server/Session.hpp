@@ -22,55 +22,55 @@ namespace tcpengine
     // 모든 함수는 네트워크 스레드에서만 호출
     class Session
     {
-        public:
-            using SessionId = std::uint64_t;
+    public:
+        using SessionId = std::uint64_t;
 
-        public:
-            virtual ~Session() = default;
+    public:
+        virtual ~Session() = default;
 
-            Session(const Session &) = delete;
-            Session &operator=(const Session &) = delete;
+        Session(const Session &) = delete;
+        Session &operator=(const Session &) = delete;
 
-            virtual SessionId getId() const = 0;
+        virtual SessionId getId() const = 0;
 
-            // 지금 붙어 있는 연결. 재접속을 기다리는 동안은 nullptr
-            virtual std::shared_ptr<Connection> getConnection() const = 0;
+        // 지금 붙어 있는 연결. 재접속을 기다리는 동안은 nullptr
+        virtual std::shared_ptr<Connection> getConnection() const = 0;
 
-            bool isConnected() const
+        bool isConnected() const
+        {
+            return getConnection() != nullptr;
+        }
+
+        // 재접속을 기다리는 동안 보낸 것은 버림
+        void send(std::shared_ptr<const PacketBuffer> data)
+        {
+            if (std::shared_ptr<Connection> connection = getConnection())
             {
-                return getConnection() != nullptr;
+                connection->send(std::move(data));
+            }
+        }
+
+        // 직렬화해서 보냄. 최대 크기를 넘으면 보내지 않고 false
+        bool send(const PacketBase &packet)
+        {
+            std::shared_ptr<const PacketBuffer> data = packet.serialize();
+
+            if (!data)
+            {
+                return false;
             }
 
-            // 재접속을 기다리는 동안 보낸 것은 버림
-            void send(std::shared_ptr<const PacketBuffer> data)
-            {
-                if (std::shared_ptr<Connection> connection = getConnection())
-                {
-                    connection->send(std::move(data));
-                }
-            }
+            send(std::move(data));
+            return true;
+        }
 
-            // 직렬화해서 보냄. 최대 크기를 넘으면 보내지 않고 false
-            bool send(const PacketBase &packet)
-            {
-                std::shared_ptr<const PacketBuffer> data = packet.serialize();
+        // 재접속을 기다리지 않고 바로 끝냄 (강퇴 등). 클라이언트에 Kicked를 알리고 붙어 있는 연결을 정상 종료함
+        virtual void close() = 0;
 
-                if (!data)
-                {
-                    return false;
-                }
+        // close()처럼 끝내되 알리지 않고 연결을 RST로 바로 끊음. 악성 클라이언트를 기다리지 않고 내보낼 때 씀
+        virtual void reset() = 0;
 
-                send(std::move(data));
-                return true;
-            }
-
-            // 재접속을 기다리지 않고 바로 끝냄 (강퇴 등). 클라이언트에 Kicked를 알리고 붙어 있는 연결을 정상 종료함
-            virtual void close() = 0;
-
-            // close()처럼 끝내되 알리지 않고 연결을 RST로 바로 끊음. 악성 클라이언트를 기다리지 않고 내보낼 때 씀
-            virtual void reset() = 0;
-
-        protected:
-            Session() = default;
+    protected:
+        Session() = default;
     };
 } // namespace tcpengine

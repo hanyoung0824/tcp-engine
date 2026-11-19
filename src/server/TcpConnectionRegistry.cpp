@@ -15,65 +15,64 @@ namespace tcpengine
         // 그냥 닫음
         class RefusedSocket : public std::enable_shared_from_this<RefusedSocket>
         {
-            public:
-                RefusedSocket(boost::asio::ip::tcp::socket socket, std::chrono::seconds closeTimeout)
-                    : m_socket(std::move(socket)), m_timer(m_socket.get_executor()), m_closeTimeout(closeTimeout)
-                {
-                }
+        public:
+            RefusedSocket(boost::asio::ip::tcp::socket socket, std::chrono::seconds closeTimeout)
+                : m_socket(std::move(socket)), m_timer(m_socket.get_executor()), m_closeTimeout(closeTimeout)
+            {
+            }
 
-                void start(std::shared_ptr<const Connection::Buffer> notice)
-                {
-                    m_timer.expires_after(m_closeTimeout);
-                    m_timer.async_wait([self = shared_from_this()](const boost::system::error_code &ec) {
-                        if (!ec)
+            void start(std::shared_ptr<const Connection::Buffer> notice)
+            {
+                m_timer.expires_after(m_closeTimeout);
+                m_timer.async_wait([self = shared_from_this()](const boost::system::error_code &ec) {
+                    if (!ec)
+                    {
+                        self->close();
+                    }
+                });
+
+                boost::asio::async_write(
+                    m_socket, boost::asio::buffer(*notice),
+                    [self = shared_from_this(), notice](const boost::system::error_code &ec, std::size_t) {
+                        if (ec)
                         {
                             self->close();
+                            return;
                         }
+
+                        boost::system::error_code ignored;
+                        self->m_socket.shutdown(boost::asio::ip::tcp::socket::shutdown_send, ignored);
+                        self->drain();
                     });
+            }
 
-                    boost::asio::async_write(
-                        m_socket, boost::asio::buffer(*notice),
-                        [self = shared_from_this(), notice](const boost::system::error_code &ec, std::size_t) {
-                            if (ec)
-                            {
-                                self->close();
-                                return;
-                            }
+        private:
+            void drain()
+            {
+                m_socket.async_read_some(boost::asio::buffer(m_discard),
+                                         [self = shared_from_this()](const boost::system::error_code &ec, std::size_t) {
+                                             if (ec)
+                                             {
+                                                 self->close();
+                                                 return;
+                                             }
 
-                            boost::system::error_code ignored;
-                            self->m_socket.shutdown(boost::asio::ip::tcp::socket::shutdown_send, ignored);
-                            self->drain();
-                        });
-                }
+                                             self->drain();
+                                         });
+            }
 
-            private:
-                void drain()
-                {
-                    m_socket.async_read_some(
-                        boost::asio::buffer(m_discard),
-                        [self = shared_from_this()](const boost::system::error_code &ec, std::size_t) {
-                            if (ec)
-                            {
-                                self->close();
-                                return;
-                            }
+            void close()
+            {
+                m_timer.cancel();
+                boost::system::error_code ignored;
+                m_socket.close(ignored);
+            }
 
-                            self->drain();
-                        });
-                }
-
-                void close()
-                {
-                    m_timer.cancel();
-                    boost::system::error_code ignored;
-                    m_socket.close(ignored);
-                }
-
-            private:
-                boost::asio::ip::tcp::socket m_socket;
-                boost::asio::steady_timer m_timer;
-                const std::chrono::seconds m_closeTimeout;
-                std::array<std::uint8_t, 256> m_discard{};
+        private:
+            boost::asio::ip::tcp::socket m_socket;
+            boost::asio::steady_timer m_timer;
+            const std::chrono::seconds m_closeTimeout;
+            std::array<std::uint8_t, 256> m_discard{};
         };
     } // namespace
 

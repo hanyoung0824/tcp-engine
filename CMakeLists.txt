@@ -156,7 +156,6 @@ tcp_engine_add_layer(tcp_engine_client client
 	${INCLUDE_DIR}/client/Client.hpp
 	${INCLUDE_DIR}/client/ClientSettings.hpp
 	${SOURCE_DIR}/client/Client.cpp
-	${SOURCE_DIR}/client/ClientContext.hpp
 	${SOURCE_DIR}/client/ClientSettings.cpp
 	${SOURCE_DIR}/client/ClientState.hpp
 	${SOURCE_DIR}/client/ClientState.cpp

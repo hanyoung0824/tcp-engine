@@ -1,6 +1,5 @@
 #include "tcpengine/client/Client.hpp"
 
-#include "ClientContext.hpp"
 #include "ClientState.hpp"
 #include "ClientTransportFactory.hpp"
 #include "ConnectionEvents.hpp"
@@ -26,13 +25,12 @@ namespace tcpengine
 {
     struct Client::WorkGuard
     {
-            boost::asio::executor_work_guard<boost::asio::io_context::executor_type> guard;
+        boost::asio::executor_work_guard<boost::asio::io_context::executor_type> guard;
     };
 
     Client::Client(const ClientSettings &settings, std::uint16_t protocolVersion)
         : m_ioContext(std::make_unique<boost::asio::io_context>()), m_packetRouter(std::make_unique<PacketRouter>()),
-          m_settings(settings), m_protocolVersion(protocolVersion), m_context(std::make_unique<ClientContext>(*this)),
-          m_state(makePassiveState(*m_context, ClientStateId::Idle))
+          m_settings(settings), m_protocolVersion(protocolVersion), m_state(makeIdleState(*this))
     {
     }
 
@@ -43,13 +41,7 @@ namespace tcpengine
 
     bool Client::addPacketDispatcher(std::uint16_t id, detail::PacketDispatcher dispatcher)
     {
-        if (m_state->getId() != ClientStateId::Idle)
-        {
-            engineLogError("registerHandler() must be called before run()");
-            return false;
-        }
-
-        return m_packetRouter->addDispatcher(id, std::move(dispatcher));
+        return m_state->onRegisterHandler(id, std::move(dispatcher));
     }
 
     void Client::send(const PacketBase &packet)
@@ -67,7 +59,7 @@ namespace tcpengine
 
     bool Client::isConnected() const
     {
-        return m_state->getId() == ClientStateId::Connected;
+        return m_state->isConnected();
     }
 
     void Client::quit()
@@ -89,9 +81,8 @@ namespace tcpengine
             return 1;
         }
 
-        if (m_state->getId() != ClientStateId::Idle)
+        if (!m_state->onRunRequested())
         {
-            engineLogError("run() can only be called once");
             return 1;
         }
 
@@ -100,7 +91,7 @@ namespace tcpengine
             return 1;
         }
 
-        changeState(makePassiveState(*m_context, ClientStateId::Starting));
+        changeState(makePassiveState(*this, ClientStateId::Starting));
         applyNextState();
 
         if (!callOnStart() || !createComponents())
@@ -122,7 +113,7 @@ namespace tcpengine
         stopNetworkThread();
         // 연결이 닫힌 일까지 응용에 알림
         processMainEvents();
-        changeState(makePassiveState(*m_context, ClientStateId::Stopped));
+        changeState(makePassiveState(*this, ClientStateId::Stopped));
         applyNextState();
         return 0;
     }
@@ -130,7 +121,7 @@ namespace tcpengine
     int Client::stopWithError()
     {
         stopNetworkThread();
-        changeState(makePassiveState(*m_context, ClientStateId::Stopped));
+        changeState(makePassiveState(*this, ClientStateId::Stopped));
         applyNextState();
         return 1;
     }
@@ -233,7 +224,7 @@ namespace tcpengine
 
     std::future<bool> Client::postFirstConnect()
     {
-        changeState(makeFirstConnectingState(*m_context));
+        changeState(makeFirstConnectingState(*this));
         applyNextState();
         auto result = std::make_shared<std::promise<bool>>();
         std::future<bool> connected = result->get_future();
@@ -422,72 +413,5 @@ namespace tcpengine
             onSessionLost();
         });
         return true;
-    }
-
-    void ClientContext::changeState(std::unique_ptr<ClientState> next)
-    {
-        m_client.changeState(std::move(next));
-    }
-
-    std::chrono::seconds ClientContext::getReconnectMaxDelay() const
-    {
-        return m_client.m_settings.reconnectMaxDelay;
-    }
-
-    void ClientContext::greet()
-    {
-        m_client.m_transport->send(
-            control::clientHello(control::ClientHello{engineProtocolVersion, m_client.m_protocolVersion}));
-
-        if (!m_client.m_sessionToken.empty())
-        {
-            m_client.m_transport->send(control::make(ControlType::Resume, m_client.m_sessionToken));
-        }
-
-        m_client.m_connectionAnnounced = true;
-        m_client.onConnected();
-    }
-
-    void ClientContext::closeConnection()
-    {
-        m_client.m_transport->close();
-    }
-
-    void ClientContext::reconnect()
-    {
-        m_client.reconnect();
-    }
-
-    void ClientContext::sendLogout()
-    {
-        if (!m_client.m_sessionToken.empty())
-        {
-            m_client.m_transport->send(control::make(ControlType::Logout));
-        }
-    }
-
-    DisconnectInfo ClientContext::takeDisconnectInfo(bool mayReconnect)
-    {
-        DisconnectInfo info;
-        info.reason = std::exchange(m_client.m_disconnectReason, std::nullopt);
-        const bool reconnectable = !info.reason || canReconnectAfter(*info.reason);
-
-        if (!reconnectable)
-        {
-            m_client.m_sessionToken.clear();
-        }
-
-        info.willReconnect = reconnectable && mayReconnect && m_client.m_settings.reconnectMaxDelay.count() > 0;
-        return info;
-    }
-
-    void ClientContext::notifyDisconnected(const DisconnectInfo &info)
-    {
-        if (!std::exchange(m_client.m_connectionAnnounced, false))
-        {
-            return;
-        }
-
-        m_client.onDisconnected(info);
     }
 } // namespace tcpengine

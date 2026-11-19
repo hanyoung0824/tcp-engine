@@ -156,12 +156,13 @@ tcp_engine_add_layer(tcp_engine_client client
 	${INCLUDE_DIR}/client/Client.hpp
 	${INCLUDE_DIR}/client/ClientSettings.hpp
 	${SOURCE_DIR}/client/Client.cpp
+	${SOURCE_DIR}/client/ClientContext.hpp
 	${SOURCE_DIR}/client/ClientSettings.cpp
+	${SOURCE_DIR}/client/ClientState.hpp
+	${SOURCE_DIR}/client/ClientState.cpp
 	${SOURCE_DIR}/client/ClientTransport.hpp
 	${SOURCE_DIR}/client/ClientTransportFactory.hpp
 	${SOURCE_DIR}/client/ClientTransportFactory.cpp
-	${SOURCE_DIR}/client/Reconnector.hpp
-	${SOURCE_DIR}/client/Reconnector.cpp
 	${SOURCE_DIR}/client/TcpClientTransport.hpp
 	${SOURCE_DIR}/client/TcpClientTransport.cpp
 )

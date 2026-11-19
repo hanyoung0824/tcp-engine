@@ -32,7 +32,7 @@ Server::~Server() = default;
 
 bool Server::addPacketDispatcher(std::uint16_t id, detail::PacketDispatcher dispatcher)
 {
-	if (m_runCalled) {
+	if (m_state != State::Idle) {
 		engineLogError("registerHandler() must be called before run()");
 		return false;
 	}
@@ -75,15 +75,16 @@ int Server::run()
 	}
 
 	// 멈춘 io_context에 남은 핸들러는 이미 사라진 객체를 가리킬 수 있어 다시 돌리지 않음
-	if (m_runCalled) {
+	if (m_state != State::Idle) {
 		engineLogError("run() can only be called once");
 		return 1;
 	}
 	if (!validateSettings()) {
 		return 1;
 	}
-	m_runCalled = true;
+	changeState(State::Starting);
 	if (!callOnStart()) {
+		changeState(State::Stopped);
 		return 1;
 	}
 
@@ -93,7 +94,43 @@ int Server::run()
 		runUntilStopped();
 	}
 	destroyComponents();
+	changeState(State::Stopped);
 	return started ? 0 : 1;
+}
+
+const char* Server::toString(State state)
+{
+	switch (state) {
+	case State::Idle: return "Idle";
+	case State::Starting: return "Starting";
+	case State::Running: return "Running";
+	case State::Stopping: return "Stopping";
+	case State::Stopped: return "Stopped";
+	}
+	return "Unknown";
+}
+
+bool Server::canChange(State from, State to)
+{
+	switch (to) {
+	case State::Idle: return false;
+	case State::Starting: return from == State::Idle;
+	case State::Running: return from == State::Starting;
+	case State::Stopping: return from == State::Running;
+	// 첫 종료 처리가 시작되기 전에 두 번째 신호가 오면 Running에서 바로 멈춤
+	case State::Stopped: return from == State::Starting || from == State::Running || from == State::Stopping;
+	}
+	return false;
+}
+
+void Server::changeState(State next)
+{
+	const State current = m_state;
+	if (!canChange(current, next)) {
+		engineLogError("Unexpected server state change: ", toString(current), " -> ", toString(next));
+	}
+	engineLogDebug("Server state: ", toString(current), " -> ", toString(next));
+	m_state = next;
 }
 
 bool Server::validateSettings() const
@@ -163,6 +200,7 @@ void Server::runUntilStopped()
 		[this] { stop(); },
 		[this] { forceStop(); });
 	m_monitor->start();
+	changeState(State::Running);
 	m_ioContext->run();
 	onStop();
 }
@@ -186,6 +224,7 @@ void Server::stop()
 void Server::gracefulStop()
 {
 	engineLogInfo("Server shutting down");
+	changeState(State::Stopping);
 	m_monitor->stop();
 	m_connectionManager->stopAccepting();
 	// 세션을 먼저 끝내야 재접속 대기 타이머가 남지 않고, 응용이 onSessionEnded에서 보낸 패킷도 연결과 함께 전송됨

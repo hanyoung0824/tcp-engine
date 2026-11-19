@@ -21,11 +21,11 @@ namespace
 		using ConnectedHandler = std::function<void(tcp::socket socket)>;
 		using FailedHandler = std::function<void()>;
 
-		ConnectAttempt(asio::io_context& ioContext, std::string host, unsigned short port,
+		ConnectAttempt(const asio::any_io_executor& executor, std::string host, unsigned short port,
 			ConnectedHandler onConnected, FailedHandler onFailed)
-			: m_resolver(ioContext),
-			m_socket(ioContext),
-			m_timer(ioContext),
+			: m_resolver(executor),
+			m_socket(executor),
+			m_timer(executor),
 			m_host(std::move(host)),
 			m_port(port),
 			m_onConnected(std::move(onConnected)),
@@ -100,42 +100,29 @@ namespace
 	};
 }
 
-TcpClientTransport::TcpClientTransport(ConnectionOptions connectionOptions)
-	: m_connectionOptions(connectionOptions)
+TcpClientTransport::TcpClientTransport(asio::any_io_executor executor, ConnectionOptions connectionOptions)
+	: m_executor(std::move(executor)),
+	m_connectionOptions(connectionOptions)
 {
-}
-
-TcpClientTransport::~TcpClientTransport()
-{
-	stop();
-}
-
-void TcpClientTransport::start()
-{
-	if (m_networkThread.joinable()) {
-		return;
-	}
-	m_workGuard.emplace(m_ioContext.get_executor());
-	m_networkThread = std::thread([this] { m_ioContext.run(); });
 }
 
 void TcpClientTransport::connect(const std::string& host, unsigned short port, std::chrono::seconds timeout,
 	std::shared_ptr<const ConnectionEvents> events, ConnectResult onResult)
 {
-	asio::post(m_ioContext, [this, host, port, timeout, events = std::move(events), onResult = std::move(onResult)] {
+	asio::post(m_executor, [this, host, port, timeout, events = std::move(events), onResult = std::move(onResult)] {
 		const auto onConnected = [this, events, onResult](tcp::socket socket) {
 			m_connection = std::make_shared<TcpConnection>(std::move(socket), events, m_nextConnectionId++, m_connectionOptions);
 			m_connection->start();
 			onResult(true);
 		};
 		const auto onFailed = [onResult] { onResult(false); };
-		std::make_shared<ConnectAttempt>(m_ioContext, host, port, onConnected, onFailed)->start(timeout);
+		std::make_shared<ConnectAttempt>(m_executor, host, port, onConnected, onFailed)->start(timeout);
 	});
 }
 
 void TcpClientTransport::send(std::shared_ptr<const Connection::Buffer> data)
 {
-	asio::post(m_ioContext, [this, data = std::move(data)] {
+	asio::post(m_executor, [this, data = std::move(data)] {
 		if (m_connection) {
 			m_connection->send(data);
 		}
@@ -144,21 +131,10 @@ void TcpClientTransport::send(std::shared_ptr<const Connection::Buffer> data)
 
 void TcpClientTransport::close()
 {
-	asio::post(m_ioContext, [this] {
+	asio::post(m_executor, [this] {
 		if (m_connection) {
 			m_connection->close();
 		}
 	});
-}
-
-void TcpClientTransport::stop()
-{
-	if (!m_networkThread.joinable()) {
-		return;
-	}
-	close();
-	// 붙잡던 것을 놓으면 연결이 닫히고 타이머가 끝난 뒤 io_context가 스스로 끝남
-	m_workGuard.reset();
-	m_networkThread.join();
 }
 }

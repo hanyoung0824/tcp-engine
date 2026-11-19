@@ -24,20 +24,23 @@ ConnectionGuard::ConnectionGuard(boost::asio::any_io_executor executor, const Se
 
 void ConnectionGuard::onConnected(const std::shared_ptr<Connection>& connection)
 {
+	m_states[connection->getId()] = State::Accepted;
 	m_receiveRateLimiter.start(*connection);
 	m_loginDeadline.start(connection);
 }
 
 void ConnectionGuard::onLoggedIn(const Connection& connection)
 {
-	m_loginDeadline.stop(connection);
+	if (changeState(connection, State::Handshaken, State::LoggedIn)) {
+		m_loginDeadline.stop(connection);
+	}
 }
 
 void ConnectionGuard::onDisconnected(const Connection& connection)
 {
 	m_receiveRateLimiter.stop(connection);
 	m_loginDeadline.stop(connection);
-	m_handshakeDoneConnections.erase(connection.getId());
+	m_states.erase(connection.getId());
 }
 
 bool ConnectionGuard::allowPacket(const std::shared_ptr<Connection>& connection, std::uint16_t packetId)
@@ -70,12 +73,36 @@ bool ConnectionGuard::handleClientHello(const std::shared_ptr<Connection>& conne
 		m_disconnect(connection, DisconnectReason::VersionMismatch);
 		return true;
 	}
-	m_handshakeDoneConnections.insert(connection->getId());
-	return true;
+	// 두 번째 ClientHello는 잘못된 패킷으로 보고 끊음
+	return changeState(*connection, State::Accepted, State::Handshaken);
 }
 
 bool ConnectionGuard::isHandshakeDone(const Connection& connection) const
 {
-	return m_handshakeDoneConnections.contains(connection.getId());
+	const auto it = m_states.find(connection.getId());
+	return it != m_states.end() && it->second != State::Accepted;
+}
+
+const char* ConnectionGuard::toString(State state)
+{
+	switch (state) {
+	case State::Accepted: return "Accepted";
+	case State::Handshaken: return "Handshaken";
+	case State::LoggedIn: return "LoggedIn";
+	}
+	return "Unknown";
+}
+
+bool ConnectionGuard::changeState(const Connection& connection, State expected, State next)
+{
+	const auto it = m_states.find(connection.getId());
+	if (it == m_states.end() || it->second != expected) {
+		engineLogWarning("Unexpected connection state change from ", connection.getAddress(), ": ",
+			it == m_states.end() ? "none" : toString(it->second), " -> ", toString(next));
+		return false;
+	}
+	engineLogDebug("Connection ", connection.getId(), " state: ", toString(expected), " -> ", toString(next));
+	it->second = next;
+	return true;
 }
 }

@@ -6,20 +6,30 @@
 #include "tcpengine/client/ClientSettings.hpp"
 #include "tcpengine/utility/Log.hpp"
 
-#include <atomic>
 #include <cstdint>
 #include <functional>
+#include <future>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
+#include <thread>
+#include <vector>
+
+namespace boost::asio
+{
+class io_context;
+}
 
 namespace tcpengine
 {
+class ClientContext;
+class ClientState;
+enum class ClientStateId : std::uint8_t;
 class ClientTransport;
 struct ConnectionEvents;
 class HeartbeatChecker;
 class PacketRouter;
-class Reconnector;
 
 struct DisconnectInfo
 {
@@ -76,9 +86,28 @@ protected:
 	// 어느 스레드에서든 호출 가능. 연결이 없으면 버림
 	void send(const PacketBase& packet);
 
-	bool isConnected() const { return m_connected; }
+	bool isConnected() const;
 
 private:
+	// 상태 객체가 Client에 일을 시키는 통로
+	friend class ClientContext;
+
+	// 아래 셋은 네트워크 스레드가 돌지 않을 때는 메인 스레드, 도는 동안은 네트워크 스레드에서만 호출
+	// 상태 객체의 함수 안에서도 부를 수 있도록 이전 상태 객체는 finishStateChange()까지 살려 둠
+	void changeState(std::unique_ptr<ClientState> next);
+
+	// 지금 상태에 이벤트를 넘기고 그 사이 바뀐 상태를 마무리함
+	void dispatch(const std::function<void(ClientState&)>& event);
+
+	// 이전 상태 객체를 없애고 새 상태의 onEnter()를 부름
+	void finishStateChange();
+
+	// 첫 접속 실패나 시작 실패 뒤 정리
+	int stopWithError();
+
+	// 어느 스레드에서든 호출 가능
+	ClientStateId getStateId() const;
+
 	bool validateSettings() const;
 
 	bool callOnStart();
@@ -86,14 +115,22 @@ private:
 	// 지원하지 않는 transport면 false
 	bool createComponents();
 
-	// 메인 스레드에서 결과를 기다림. 처음 접속은 실패해도 다시 시도하지 않음
-	bool connectFirstTime();
+	// 처음 접속은 실패해도 다시 시도하지 않음
+	std::future<bool> postFirstConnect();
+
+	void startNetworkThread();
+
+	// 연결을 닫고 남은 작업이 끝날 때까지 기다림. 네트워크 스레드가 아닌 곳에서 호출
+	void stopNetworkThread();
 
 	// 메인 스레드에서 네트워크 스레드의 quit()이 끝날 때까지 기다림
 	void quitAndWait();
 
-	// 아래는 네트워크 스레드에서만 호출
+	// 결과는 네트워크 스레드에서 onResult로 알림
 	void connect(std::function<void(bool connected)> onResult);
+
+	// 아래는 네트워크 스레드에서만 호출. 연결 이벤트는 지금 상태 객체에 넘김
+	void reconnect();
 
 	void quit();
 
@@ -114,23 +151,33 @@ private:
 	bool addPacketDispatcher(std::uint16_t id, detail::PacketDispatcher dispatcher);
 
 private:
-	// 뒤에 둔 것이 먼저 소멸함. 재접속 타이머 → 하트비트 → transport(네트워크 스레드) → PacketRouter 순
+	struct WorkGuard;
+
+	// 멈춘 뒤 남은 핸들러가 다른 멤버를 잡고 있을 수 있어 가장 나중에 소멸
+	std::unique_ptr<boost::asio::io_context> m_ioContext;
 	std::unique_ptr<PacketRouter> m_packetRouter;
 	std::unique_ptr<ClientTransport> m_transport;
 	std::shared_ptr<const ConnectionEvents> m_connectionEvents;
 	std::unique_ptr<HeartbeatChecker> m_heartbeatChecker;
-	std::unique_ptr<Reconnector> m_reconnector;
+	// 연결도 타이머도 없는 동안에도 run()이 반환하지 않게 붙잡음. stopNetworkThread()에서 놓음
+	std::unique_ptr<WorkGuard> m_workGuard;
+	std::thread m_networkThread;
 	const ClientSettings m_settings;
 	const std::uint16_t m_protocolVersion;
-	bool m_runCalled = false;
-	// 메인 스레드가 읽으므로 atomic
-	std::atomic<bool> m_connected{ false };
+	// 상태 객체들이 참조하므로 상태보다 먼저 만들고 나중에 없앰
+	std::unique_ptr<ClientContext> m_context;
+	// m_state를 바꿀 때와 다른 스레드가 읽을 때만 잠금. 바꾸는 스레드 안에서 읽을 때는 잠그지 않음
+	mutable std::mutex m_stateMutex;
+	std::unique_ptr<ClientState> m_state;
+	std::vector<std::unique_ptr<ClientState>> m_retiredStates;
+	bool m_enterPending = false;
+	// 응용 훅에서 연결을 닫아 이벤트 안에서 이벤트가 다시 올 수 있음. 가장 바깥 이벤트가 끝날 때만 마무리
+	int m_dispatchDepth = 0;
 
 	// 아래는 네트워크 스레드에서만 사용
 	// 비어 있으면 세션 없음
 	std::string m_sessionToken;
 	// 서버가 Disconnect로 알려 준 이유. 연결이 끊길 때 응용에 넘기고 지움
 	std::optional<DisconnectReason> m_disconnectReason;
-	bool m_quitting = false;
 };
 }

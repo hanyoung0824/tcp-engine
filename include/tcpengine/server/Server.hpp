@@ -91,6 +91,22 @@ protected:
 	virtual void onSessionEnded(const std::shared_ptr<Session>&, SessionEndReason) {}
 
 private:
+	enum class State
+	{
+		Idle,       // run() 전
+		Starting,   // 설정 검사, onStart(), 부품 생성
+		Running,
+		Stopping,   // 세션을 끝내고 연결이 닫히기를 기다림
+		Stopped,
+	};
+
+	static const char* toString(State state);
+
+	static bool canChange(State from, State to);
+
+	// run()을 부른 스레드(네트워크 스레드)에서만 호출
+	void changeState(State next);
+
 	bool validateSettings() const;
 
 	bool callOnStart();
@@ -133,7 +149,8 @@ private:
 	std::unique_ptr<ShutdownSignalHandler> m_shutdownSignalHandler;
 	const ServerSettings m_settings;
 	const std::uint16_t m_protocolVersion;
-	bool m_runCalled = false;
+	std::atomic<State> m_state{ State::Idle };
+	// stop()은 run() 전이나 다른 스레드에서도 불리므로 상태와 따로 둠
 	std::atomic<bool> m_stopRequested{ false };
 };
 }

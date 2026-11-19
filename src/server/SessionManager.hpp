@@ -61,6 +61,19 @@ public:
 private:
 	class ServerSession;
 
+	enum class SessionState
+	{
+		Attached,  // 연결이 붙어 있음
+		Detached,  // 연결이 끊겨 재접속을 기다림. 만료 타이머가 돎
+		Ended,     // 응용이 세션을 들고 있다가 close()를 불러도 아무 일도 하지 않음
+	};
+
+	static const char* toString(SessionState state);
+
+	static bool canChange(SessionState from, SessionState to);
+
+	void changeState(ServerSession& session, SessionState next);
+
 	void endAll();
 
 	void attach(ServerSession& session, const std::shared_ptr<Connection>& connection);

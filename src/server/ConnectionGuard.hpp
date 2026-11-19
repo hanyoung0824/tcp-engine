@@ -13,7 +13,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
-#include <unordered_set>
+#include <unordered_map>
 
 namespace tcpengine
 {
@@ -55,8 +55,21 @@ public:
 	// ClientHello 본문을 처리. 버전이 다르면 VersionMismatch로 끊음. 형식이 틀리면 false
 	bool handleClientHello(const std::shared_ptr<Connection>& connection, PacketReader& body);
 
-	// ClientHello로 버전 확인을 마쳤는지
 	bool isHandshakeDone(const Connection& connection) const;
+
+private:
+	// 로그인 시간 제한은 Accepted와 Handshaken 동안 돌아감
+	enum class State
+	{
+		Accepted,    // 접속함. ClientHello 전이라 제어 패킷만 받음
+		Handshaken,  // 버전 확인을 마침. 로그인 요청을 받음
+		LoggedIn,    // 세션이 붙음
+	};
+
+	static const char* toString(State state);
+
+	// 허용하지 않는 전환이면 로그를 남기고 false
+	bool changeState(const Connection& connection, State expected, State next);
 
 private:
 	const Settings m_settings;
@@ -64,6 +77,6 @@ private:
 	const Disconnect m_disconnect;
 	ReceiveRateLimiter m_receiveRateLimiter;
 	LoginDeadline m_loginDeadline;
-	std::unordered_set<Connection::ConnectionId> m_handshakeDoneConnections;
+	std::unordered_map<Connection::ConnectionId, State> m_states;
 };
 }

@@ -54,8 +54,7 @@ public:
 
 	std::shared_ptr<Connection> getConnection() const override { return m_connection; }
 
-	// end()가 끝난 세션. 응용이 들고 있다가 close()를 불러도 아무 일도 하지 않음
-	bool isEnded() const { return m_owner == nullptr; }
+	bool isEnded() const { return m_state == SessionState::Ended; }
 
 	void close() override
 	{
@@ -76,10 +75,10 @@ private:
 
 	const SessionId m_id;
 	const std::string m_token;
+	SessionState m_state = SessionState::Attached;
 	std::shared_ptr<Connection> m_connection;
 	boost::asio::steady_timer m_expiryTimer;
-	// end()에서 nullptr로 바꿈
-	SessionManager* m_owner;
+	SessionManager* const m_owner;
 };
 
 SessionManager::SessionManager(boost::asio::any_io_executor executor, std::chrono::seconds resumeTimeout, Callbacks callbacks)
@@ -140,7 +139,7 @@ void SessionManager::resume(const std::shared_ptr<Connection>& connection, const
 	}
 
 	const std::shared_ptr<ServerSession> session = m_sessions.at(idIt->second);
-	if (session->isConnected()) {
+	if (session->m_state == SessionState::Attached) {
 		// 이전 연결이 끊긴 걸 아직 모르는 경우. 이전 연결을 버리고 새 연결로 넘김
 		const std::shared_ptr<Connection> previous = std::move(session->m_connection);
 		m_idsByConnection.erase(previous->getId());
@@ -149,6 +148,7 @@ void SessionManager::resume(const std::shared_ptr<Connection>& connection, const
 	}
 	else {
 		session->m_expiryTimer.cancel();
+		changeState(*session, SessionState::Attached);
 	}
 
 	attach(*session, connection);
@@ -176,11 +176,12 @@ void SessionManager::onConnectionClosed(const Connection& connection)
 		return;
 	}
 
+	changeState(*session, SessionState::Detached);
 	engineLogInfo("Session ", session->m_id, " detached, waiting ", m_resumeTimeout.count(), "s for resume");
 	session->m_expiryTimer.expires_after(m_resumeTimeout);
 	session->m_expiryTimer.async_wait([this, weakSession = std::weak_ptr<ServerSession>(session)](const boost::system::error_code& ec) {
 		const std::shared_ptr<ServerSession> expired = weakSession.lock();
-		if (ec || !expired || expired->isConnected()) {
+		if (ec || !expired || expired->m_state != SessionState::Detached) {
 			return;
 		}
 		engineLogInfo("Session ", expired->m_id, " expired");
@@ -210,6 +211,35 @@ void SessionManager::endAll()
 	}
 }
 
+const char* SessionManager::toString(SessionState state)
+{
+	switch (state) {
+	case SessionState::Attached: return "Attached";
+	case SessionState::Detached: return "Detached";
+	case SessionState::Ended: return "Ended";
+	}
+	return "Unknown";
+}
+
+bool SessionManager::canChange(SessionState from, SessionState to)
+{
+	switch (to) {
+	case SessionState::Attached: return from == SessionState::Detached;
+	case SessionState::Detached: return from == SessionState::Attached;
+	case SessionState::Ended: return from != SessionState::Ended;
+	}
+	return false;
+}
+
+void SessionManager::changeState(ServerSession& session, SessionState next)
+{
+	if (!canChange(session.m_state, next)) {
+		engineLogError("Unexpected session ", session.m_id, " state change: ", toString(session.m_state), " -> ", toString(next));
+	}
+	engineLogDebug("Session ", session.m_id, " state: ", toString(session.m_state), " -> ", toString(next));
+	session.m_state = next;
+}
+
 void SessionManager::attach(ServerSession& session, const std::shared_ptr<Connection>& connection)
 {
 	session.m_connection = connection;
@@ -229,7 +259,7 @@ void SessionManager::end(ServerSession& session, SessionEndReason reason, Connec
 	if (session.isEnded()) {
 		return;
 	}
-	session.m_owner = nullptr;
+	changeState(session, SessionState::Ended);
 	session.m_expiryTimer.cancel();
 
 	// 콜백이 끝날 때까지 세션이 살아 있도록 잡아 둠

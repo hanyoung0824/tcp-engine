@@ -41,7 +41,7 @@ namespace tcpengine
 
     bool Client::addPacketDispatcher(std::uint16_t id, detail::PacketDispatcher dispatcher)
     {
-        return m_state->onRegisterHandler(id, std::move(dispatcher));
+        return m_state->tryRegisterHandler(id, std::move(dispatcher));
     }
 
     void Client::send(const PacketBase &packet)
@@ -81,8 +81,9 @@ namespace tcpengine
             return 1;
         }
 
-        if (!m_state->onRunRequested())
+        if (!m_state->canRun())
         {
+            engineLogError("run() can only be called once");
             return 1;
         }
 

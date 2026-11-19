@@ -34,12 +34,12 @@ namespace tcpengine
                 return next == ClientStateId::Starting;
             }
 
-            bool onRunRequested() override
+            bool canRun() const override
             {
                 return true;
             }
 
-            bool onRegisterHandler(std::uint16_t id, detail::PacketDispatcher dispatcher) override
+            bool tryRegisterHandler(std::uint16_t id, detail::PacketDispatcher dispatcher) override
             {
                 return addPacketDispatcher(id, std::move(dispatcher));
             }
@@ -311,13 +311,7 @@ namespace tcpengine
         changeState(std::make_unique<QuittingState>(m_client));
     }
 
-    bool ClientState::onRunRequested()
-    {
-        engineLogError("run() can only be called once");
-        return false;
-    }
-
-    bool ClientState::onRegisterHandler(std::uint16_t, detail::PacketDispatcher)
+    bool ClientState::tryRegisterHandler(std::uint16_t, detail::PacketDispatcher)
     {
         engineLogError("registerHandler() must be called before run()");
         return false;

@@ -46,11 +46,14 @@ namespace tcpengine
             return false;
         }
 
-        // run()이 불림. 실행해도 되면 true. 기본은 오류 로그를 남기고 false
-        virtual bool onRunRequested();
+        // run()은 한 번만 실행할 수 있어 Idle만 true
+        virtual bool canRun() const
+        {
+            return false;
+        }
 
-        // registerHandler()가 불림. 등록하면 true. 기본은 오류 로그를 남기고 false
-        virtual bool onRegisterHandler(std::uint16_t id, detail::PacketDispatcher dispatcher);
+        // 등록하면 true. 기본은 오류 로그를 남기고 false
+        virtual bool tryRegisterHandler(std::uint16_t id, detail::PacketDispatcher dispatcher);
 
         // 이 상태로 바뀐 직후. 이벤트 처리가 모두 끝난 뒤에 불림
         virtual void onEnter() {}

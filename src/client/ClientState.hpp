@@ -1,7 +1,6 @@
 #pragma once
 
-#include "tcpengine/network/Connection.hpp"
-
+#include <chrono>
 #include <cstdint>
 #include <memory>
 
@@ -18,13 +17,13 @@ enum class ClientStateId : std::uint8_t
 	Connected,
 	WaitingReconnect,
 	Disconnected,      // 다시 접속하지 않을 이유로 끊김
-	Quitting,          // onRun()이 끝나 Logout을 보내고 닫는 중
+	Quitting,          // quit()으로 메인 루프가 끝나 Logout을 보내고 닫는 중
 	Stopped,           // 네트워크 스레드까지 끝남
 };
 
 // 상태마다 받는 이벤트를 처리함. 처리하지 않는 이벤트는 무시
-// 상태가 바뀔 때마다 새로 만들고, 그 상태에서만 쓰는 데이터(재접속 타이머 등)를 직접 가짐
-// 네트워크 스레드가 도는 동안은 네트워크 스레드에서만 사용
+// 상태가 바뀔 때마다 새로 만들고, 그 상태에서만 쓰는 데이터(재접속 시각 등)를 직접 가짐
+// 메인 스레드에서만 사용
 class ClientState
 {
 public:
@@ -48,18 +47,18 @@ public:
 	// 이 상태로 바뀐 직후. 이벤트 처리가 모두 끝난 뒤에 불림
 	virtual void onEnter() {}
 
+	// 메인 루프의 틱마다 불림
+	virtual void onTick(std::chrono::steady_clock::time_point) {}
+
 	// TCP 연결이 붙음
-	virtual void onConnected(const std::shared_ptr<Connection>&) {}
+	virtual void onConnected() {}
 
 	// 재접속 시도가 실패함
 	virtual void onConnectFailed() {}
 
-	virtual void onDisconnected(const std::shared_ptr<Connection>&) {}
+	virtual void onDisconnected() {}
 
-	// 재접속 대기 시간이 끝남
-	virtual void onReconnectDue() {}
-
-	// onRun()이 끝남. 기본은 Quitting으로 바꿈
+	// 메인 루프가 끝남. 기본은 Quitting으로 바꿈
 	virtual void onQuit();
 
 protected:

@@ -25,6 +25,8 @@ struct ClientSettings
 	std::chrono::seconds connectTimeout{};
 	// 연결이 끊기면 1, 2, 4초…로 늘려 가며 이 값까지 기다렸다가 다시 접속함. 0이면 다시 접속하지 않음
 	std::chrono::seconds reconnectMaxDelay{};
+	// run()의 메인 루프가 onUpdate()를 부르는 간격. 네트워크 이벤트는 이보다 빨리 처리됨
+	std::chrono::milliseconds tickInterval{};
 	LogSettings log;
 
 	// 틀리면 이유를 담은 std::invalid_argument를 던짐

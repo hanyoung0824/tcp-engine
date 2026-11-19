@@ -17,16 +17,23 @@ using TargetDispatcher = std::function<bool(const std::shared_ptr<Target>& targe
 
 using PacketDispatcher = TargetDispatcher<Connection>;
 
+// 본문을 끝까지 읽고 값 규칙까지 통과했는지
+template <typename T>
+bool readPacket(PacketReader& body, T& packet)
+{
+	static_assert(std::is_base_of_v<PacketBase, T>, "T must derive from PacketBase");
+	return packet.read(body) && body.isEnd() && packet.validate();
+}
+
 template <typename T, typename Target, typename Handler>
 TargetDispatcher<Target> makePacketDispatcher(Handler handler)
 {
-	static_assert(std::is_base_of_v<PacketBase, T>, "T must derive from PacketBase");
 	static_assert(std::is_invocable_v<Handler&, const std::shared_ptr<Target>&, const T&>,
 		"Handler must be callable as handler(const std::shared_ptr<Target>&, const T&)");
 
 	return [handler = std::move(handler)](const std::shared_ptr<Target>& target, PacketReader& body) mutable {
 		T packet;
-		if (!packet.read(body) || !body.isEnd() || !packet.validate()) {
+		if (!readPacket(body, packet)) {
 			return false;
 		}
 		handler(target, packet);

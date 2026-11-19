@@ -29,6 +29,9 @@ void ClientSettings::validate() const
 	if (reconnectMaxDelay.count() < 0) {
 		throw std::invalid_argument("reconnectMaxDelaySeconds must not be negative");
 	}
+	if (tickInterval.count() <= 0) {
+		throw std::invalid_argument("tickIntervalMs must be positive");
+	}
 	log.validate();
 }
 
@@ -49,6 +52,7 @@ ClientSettings ClientSettings::fromJson(const nlohmann::json& file)
 		settings.closeTimeout = config::readSeconds(engine, "closeTimeout");
 		settings.connectTimeout = config::readSeconds(engine, "connectTimeoutSeconds");
 		settings.reconnectMaxDelay = config::readSeconds(engine, "reconnectMaxDelaySeconds");
+		settings.tickInterval = std::chrono::milliseconds(config::readPositive(engine, "tickIntervalMs"));
 		settings.validate();
 	}
 	catch (const std::exception& e) {

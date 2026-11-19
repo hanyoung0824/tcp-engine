@@ -13,7 +13,6 @@
 #include <boost/asio/any_io_executor.hpp>
 #include <boost/asio/executor_work_guard.hpp>
 #include <boost/asio/io_context.hpp>
-#include <boost/asio/post.hpp>
 
 #include <exception>
 #include <future>
@@ -47,7 +46,7 @@ Client::~Client()
 
 bool Client::addPacketDispatcher(std::uint16_t id, detail::PacketDispatcher dispatcher)
 {
-	if (getStateId() != ClientStateId::Idle) {
+	if (m_state->getId() != ClientStateId::Idle) {
 		engineLogError("registerHandler() must be called before run()");
 		return false;
 	}
@@ -66,13 +65,16 @@ void Client::send(const PacketBase& packet)
 
 bool Client::isConnected() const
 {
-	return getStateId() == ClientStateId::Connected;
+	return m_state->getId() == ClientStateId::Connected;
 }
 
-ClientStateId Client::getStateId() const
+void Client::quit()
 {
-	const std::lock_guard lock(m_stateMutex);
-	return m_state->getId();
+	{
+		const std::lock_guard lock(m_mainEventMutex);
+		m_quitRequested = true;
+	}
+	m_mainEventReady.notify_one();
 }
 
 int Client::run()
@@ -83,7 +85,7 @@ int Client::run()
 		return 1;
 	}
 
-	if (getStateId() != ClientStateId::Idle) {
+	if (m_state->getId() != ClientStateId::Idle) {
 		engineLogError("run() can only be called once");
 		return 1;
 	}
@@ -102,10 +104,12 @@ int Client::run()
 		return stopWithError();
 	}
 
-	onRun();
+	runMainLoop();
 
-	quitAndWait();
+	dispatch([](ClientState& state) { state.onQuit(); });
 	stopNetworkThread();
+	// 연결이 닫힌 일까지 응용에 알림
+	processMainEvents();
 	changeState(makePassiveState(*m_context, ClientStateId::Stopped));
 	finishStateChange();
 	return 0;
@@ -125,11 +129,8 @@ void Client::changeState(std::unique_ptr<ClientState> next)
 		engineLogError("Unexpected client state change: ", m_state->toString(), " -> ", next->toString());
 	}
 	engineLogDebug("Client state: ", m_state->toString(), " -> ", next->toString());
-	{
-		const std::lock_guard lock(m_stateMutex);
-		m_retiredStates.push_back(std::move(m_state));
-		m_state = std::move(next);
-	}
+	m_retiredStates.push_back(std::move(m_state));
+	m_state = std::move(next);
 	m_enterPending = true;
 }
 
@@ -242,15 +243,62 @@ void Client::stopNetworkThread()
 	m_networkThread.join();
 }
 
-void Client::quitAndWait()
+void Client::runMainLoop()
 {
-	// stopNetworkThread()의 close가 quit()이 보낼 Logout보다 먼저 실행되지 않도록 quit()이 끝날 때까지 기다림
-	std::promise<void> done;
-	boost::asio::post(*m_ioContext, [this, &done] {
-		quit();
-		done.set_value();
-	});
-	done.get_future().wait();
+	std::chrono::steady_clock::time_point nextTick = std::chrono::steady_clock::now();
+	while (!m_quitRequested) {
+		processMainEvents();
+
+		const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+		if (now >= nextTick) {
+			dispatch([now](ClientState& state) { state.onTick(now); });
+			onUpdate();
+			nextTick += m_settings.tickInterval;
+			// 응용이 오래 걸려 밀렸으면 쌓인 틱을 몰아서 돌리지 않음
+			if (nextTick < now) {
+				nextTick = now + m_settings.tickInterval;
+			}
+		}
+
+		std::unique_lock lock(m_mainEventMutex);
+		m_mainEventReady.wait_until(lock, nextTick, [this] { return !m_mainEvents.empty() || m_quitRequested; });
+	}
+}
+
+void Client::processMainEvents()
+{
+	std::deque<std::function<void()>> events;
+	{
+		const std::lock_guard lock(m_mainEventMutex);
+		events.swap(m_mainEvents);
+	}
+	for (const std::function<void()>& event : events) {
+		event();
+	}
+}
+
+void Client::postToMain(std::function<void()> event)
+{
+	{
+		const std::lock_guard lock(m_mainEventMutex);
+		m_mainEvents.push_back(std::move(event));
+	}
+	m_mainEventReady.notify_one();
+}
+
+void Client::runPacketHandler(std::uint16_t packetId, const std::function<void()>& handle)
+{
+	try {
+		handle();
+	}
+	catch (const std::exception& e) {
+		engineLogError("Exception while handling packet id ", packetId, ": ", e.what());
+		m_transport->close();
+	}
+	catch (...) {
+		engineLogError("Unknown exception while handling packet id ", packetId);
+		m_transport->close();
+	}
 }
 
 void Client::connect(std::function<void(bool connected)> onResult)
@@ -262,25 +310,20 @@ void Client::reconnect()
 {
 	connect([this](bool connected) {
 		if (!connected) {
-			dispatch([](ClientState& state) { state.onConnectFailed(); });
+			postToMain([this] { dispatch([](ClientState& state) { state.onConnectFailed(); }); });
 		}
 	});
 }
 
-void Client::quit()
+void Client::handleConnected(const std::shared_ptr<Connection>&)
 {
-	dispatch([](ClientState& state) { state.onQuit(); });
-}
-
-void Client::handleConnected(const std::shared_ptr<Connection>& connection)
-{
-	dispatch([&connection](ClientState& state) { state.onConnected(connection); });
+	postToMain([this] { dispatch([](ClientState& state) { state.onConnected(); }); });
 }
 
 void Client::handleDisconnected(const std::shared_ptr<Connection>& connection)
 {
 	m_heartbeatChecker->stop(*connection);
-	dispatch([&connection](ClientState& state) { state.onDisconnected(connection); });
+	postToMain([this] { dispatch([](ClientState& state) { state.onDisconnected(); }); });
 }
 
 bool Client::handleServerHello(const std::shared_ptr<Connection>& connection, PacketReader& body)
@@ -300,7 +343,8 @@ bool Client::handleDisconnectNotice(PacketReader& body)
 		return false;
 	}
 	engineLogInfo("Server is closing the connection: ", toString(*reason));
-	m_disconnectReason = reason;
+	// 연결이 끊긴 일보다 먼저 메인 스레드에 도착함
+	postToMain([this, reason] { m_disconnectReason = reason; });
 	return true;
 }
 
@@ -310,8 +354,8 @@ bool Client::handleSessionStarted(PacketReader& body)
 	if (!body.readString(token) || !body.isEnd() || token.size() != sessionTokenLength) {
 		return false;
 	}
-	m_sessionToken = std::move(token);
 	engineLogDebug("Session started");
+	postToMain([this, token = std::move(token)]() mutable { m_sessionToken = std::move(token); });
 	return true;
 }
 
@@ -321,7 +365,7 @@ bool Client::handleSessionResumed(PacketReader& body)
 		return false;
 	}
 	engineLogInfo("Session resumed");
-	onSessionResumed();
+	postToMain([this] { onSessionResumed(); });
 	return true;
 }
 
@@ -331,8 +375,10 @@ bool Client::handleResumeFailed(PacketReader& body)
 		return false;
 	}
 	engineLogInfo("Session resume failed, login again");
-	m_sessionToken.clear();
-	onSessionLost();
+	postToMain([this] {
+		m_sessionToken.clear();
+		onSessionLost();
+	});
 	return true;
 }
 
@@ -341,28 +387,19 @@ void ClientContext::changeState(std::unique_ptr<ClientState> next)
 	m_client.changeState(std::move(next));
 }
 
-void ClientContext::dispatch(const std::function<void(ClientState&)>& event)
-{
-	m_client.dispatch(event);
-}
-
-boost::asio::any_io_executor ClientContext::getExecutor() const
-{
-	return m_client.m_ioContext->get_executor();
-}
-
 std::chrono::seconds ClientContext::getReconnectMaxDelay() const
 {
 	return m_client.m_settings.reconnectMaxDelay;
 }
 
-void ClientContext::greet(const std::shared_ptr<Connection>& connection)
+void ClientContext::greet()
 {
-	connection->send(control::clientHello(control::ClientHello{ engineProtocolVersion, m_client.m_protocolVersion }));
+	m_client.m_transport->send(control::clientHello(control::ClientHello{ engineProtocolVersion, m_client.m_protocolVersion }));
 	if (!m_client.m_sessionToken.empty()) {
-		connection->send(control::make(ControlType::Resume, m_client.m_sessionToken));
+		m_client.m_transport->send(control::make(ControlType::Resume, m_client.m_sessionToken));
 	}
-	m_client.onConnected(connection);
+	m_client.m_connectionAnnounced = true;
+	m_client.onConnected();
 }
 
 void ClientContext::closeConnection()
@@ -394,8 +431,11 @@ DisconnectInfo ClientContext::takeDisconnectInfo(bool mayReconnect)
 	return info;
 }
 
-void ClientContext::notifyDisconnected(const std::shared_ptr<Connection>& connection, const DisconnectInfo& info)
+void ClientContext::notifyDisconnected(const DisconnectInfo& info)
 {
-	m_client.onDisconnected(connection, info);
+	if (!std::exchange(m_client.m_connectionAnnounced, false)) {
+		return;
+	}
+	m_client.onDisconnected(info);
 }
 }
